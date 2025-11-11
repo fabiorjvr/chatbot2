@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 load_dotenv(encoding='latin-1')
 
 def get_db_connection():
+    """Estabelece a conexão com o banco de dados PostgreSQL."""
     return psycopg2.connect(os.getenv("DATABASE_URL"))
 
 class DatabaseTools:
@@ -39,12 +40,9 @@ class DatabaseTools:
                 cur.execute(query, params)
                 
                 if cur.description:
-                    # Obter nomes das colunas
                     colunas = [desc[0] for desc in cur.description]
-                    # Formatar resultados como lista de dicionários
                     return [dict(zip(colunas, row)) for row in cur.fetchall()]
                 else:
-                    # Para INSERT, UPDATE, DELETE, etc.
                     self.conn.commit()
                     return [{"status": "sucesso", "linhas_afetadas": cur.rowcount}]
 
@@ -56,8 +54,9 @@ class DatabaseTools:
         if self.conn:
             self.conn.close()
 
-    def get_top_products(self, month: int, year: int, limit: int = 1) -> list:
-        """Retorna os N produtos mais vendidos de um mês/ano."""
+    def get_top_products(self, limit: int = 1, month: int = None, year: int = None) -> list:
+        """Retorna os N produtos mais vendidos, opcionalmente filtrando por mês/ano."""
+        params = []
         query = """
             SELECT 
                 modelo, 
@@ -65,12 +64,24 @@ class DatabaseTools:
                 SUM(unidades_vendidas) as unidades_vendidas, 
                 SUM(receita) as receita_total
             FROM vendas_smartphones
-            WHERE mes = %s AND ano = %s
+        """
+        
+        where_clauses = []
+        if month and year:
+            where_clauses.append("mes = %s AND ano = %s")
+            params.extend([month, year])
+        
+        if where_clauses:
+            query += " WHERE " + " AND ".join(where_clauses)
+            
+        query += """
             GROUP BY modelo, fabricante
             ORDER BY unidades_vendidas DESC
             LIMIT %s;
         """
-        return self.executar_query(query, (month, year, limit))
+        params.append(limit)
+        
+        return self.executar_query(query, tuple(params))
 
     def get_monthly_revenue(self, month: int, year: int) -> list:
         """Retorna a receita total e o total de unidades vendidas de um mês/ano."""
@@ -83,8 +94,8 @@ class DatabaseTools:
         """
         return self.executar_query(query, (month, year))
 
-    def get_sales_by_month(self, month: int, year: int) -> list:
-        """Retorna todos os produtos vendidos em um mês/ano."""
+    def get_product_sales_by_month(self, month: int, year: int) -> list:
+        """Retorna todos os produtos vendidos em um mês/ano, ordenados por unidades vendidas."""
         query = """
             SELECT 
                 modelo, 
@@ -110,19 +121,33 @@ class DatabaseTools:
         """
         return self.executar_query(query, (f"%{produto.lower()}%", month, year))
 
-    def get_comparison_by_manufacturer(self, month: int, year: int) -> list:
-        """Retorna o total de vendas por fabricante em um mês/ano."""
+    def get_comparison_by_manufacturer(self, year: int, month: int = None) -> list:
+        """Retorna o total de vendas por fabricante, opcionalmente filtrando por mês/ano."""
+        params = []
         query = """
             SELECT 
                 fabricante, 
                 SUM(unidades_vendidas) as total_unidades,
                 SUM(receita) as receita_total
             FROM vendas_smartphones
-            WHERE mes = %s AND ano = %s
+        """
+        
+        where_clauses = ["ano = %s"]
+        params.append(year)
+        
+        if month:
+            where_clauses.append("mes = %s")
+            params.append(month)
+        
+        if where_clauses:
+            query += " WHERE " + " AND ".join(where_clauses)
+            
+        query += """
             GROUP BY fabricante
             ORDER BY total_unidades DESC;
         """
-        return self.executar_query(query, (month, year))
+        
+        return self.executar_query(query, tuple(params))
 
     def get_average_monthly_sales(self, year: int) -> list:
         """Calcula a média de receita e unidades vendidas por mês em um ano."""
@@ -172,7 +197,7 @@ class DatabaseTools:
         return self.executar_query(query, (year,))
 
     def get_least_sold_products(self, year: int, limit: int = 1) -> list:
-        """Retorna os N produtos menos vendidos de um ano."""
+        """Retorna os N produtos menos vendidos de um ano, com base na receita total."""
         query = """
             SELECT 
                 modelo, 
@@ -192,20 +217,21 @@ class DatabaseTools:
         if not products:
             return []
 
-        query = """
+        # Cria os placeholders para a cláusula IN
+        placeholders = ', '.join(['%s'] * len(products))
+        
+        query = f"""
             SELECT 
                 modelo, 
                 fabricante,
                 SUM(unidades_vendidas) as unidades_vendidas, 
                 SUM(receita) as receita_total
             FROM vendas_smartphones
-            WHERE ano = %s AND lower(modelo) = ANY(%s)
+            WHERE lower(modelo) IN ({placeholders}) AND ano = %s
             GROUP BY modelo, fabricante
             ORDER BY receita_total DESC;
         """
         
-        # Parâmetros para a query
-        product_names = [p.lower() for p in products]
-        params = (year, product_names)
-        
-        return self.executar_query(query, params)
+        # Prepara os parâmetros: produtos em minúsculas e o ano
+        params = [p.lower() for p in products] + [year]
+        return self.executar_query(query, tuple(params))

@@ -30,9 +30,9 @@ Você é um assistente de vendas de smartphones. Analise a pergunta do usuário 
    - Retorna a RECEITA TOTAL de um mês/ano 
    - Use para: "qual foi a receita", "faturamento", "valor de vendas" 
 
-3. `get_sales_by_month(month: int, year: int)` 
+3. `get_product_sales_by_month(month: int, year: int)` 
    - Retorna TODOS os produtos vendidos em um mês/ano 
-   - Use para: "quanto vendeu de cada aparelho", "vendas por produto", "lista de vendas" 
+   - Use para: \"quanto vendeu de cada aparelho\", \"vendas por produto\", \"lista de vendas\" 
 
 4. `get_product_sales(produto: str, month: int, year: int)` 
    - Retorna vendas de UM produto específico 
@@ -86,11 +86,11 @@ Resposta:
 } 
 
 Exemplo 3: 
-Pergunta: "quanto vendeu de cada aparelho em fevereiro de 2025?" 
+Pergunta: \"quanto vendeu de cada aparelho em fevereiro de 2025?\" 
 Resposta: 
 { 
-  "tool": "get_sales_by_month", 
-  "params": {"month": 2, "year": 2025} 
+  "tool": \"get_product_sales_by_month\", 
+  "params": {\"month\": 2, \"year\": 2025} 
 } 
 
 Exemplo 4: 
@@ -141,7 +141,7 @@ Resposta:
                 d = data[0] 
                 return f"💰 **Receita Total:** R$ {d['receita_total']:,.2f}\n📦 **Total de Unidades:** {d['total_unidades']:,}" 
 
-            elif tool_name == "get_sales_by_month": 
+            elif tool_name == "get_product_sales_by_month": 
                 lines = ["📊 **Vendas do mês**:\n"]
                 if len(data) > 10:
                     lines = [f"📊 **Vendas do mês** (mostrando top 10 de {len(data)} produtos):\n"]
