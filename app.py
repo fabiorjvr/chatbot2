@@ -4,6 +4,7 @@ import requests
 import os
 from ai_agent import AIAgent
 
+
 # Manual .env parsing
 try:
     with open('.env', 'r', encoding='latin-1') as f:
@@ -18,10 +19,12 @@ except FileNotFoundError:
 app = Flask(__name__)
 ai_agent = AIAgent()
 
+
 # Evolution API configuration
 EVOLUTION_API_URL = os.getenv("EVOLUTION_API_URL", "http://localhost:8080")
 EVOLUTION_API_KEY = os.getenv("EVOLUTION_API_KEY")
-INSTANCE_NAME = "default"  # Or get from webhook data if available
+INSTANCE_NAME = "default"
+
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -29,7 +32,6 @@ def webhook():
     print("Received webhook:", data)
 
     # Extract message details from the webhook payload
-    # This structure is based on the Evolution API documentation
     if data.get("event") == "messages.upsert" and data.get("data"):
         message_data = data["data"]
         if message_data.get("key", {}).get("fromMe"):
@@ -46,6 +48,7 @@ def webhook():
             send_message(sender, response_text)
 
     return jsonify({"status": "received"})
+
 
 def send_message(recipient_jid, text):
     """Sends a message using the Evolution API."""
@@ -72,8 +75,7 @@ def send_message(recipient_jid, text):
     except requests.exceptions.RequestException as e:
         print(f"Error sending message to {recipient_jid}: {e}")
 
+
 if __name__ == '__main__':
-    app.run(port=5001, debug=True)
-    if __name__ == '__main__':
     port = int(os.getenv('PORT', 5001))
     app.run(host='0.0.0.0', port=port, debug=False)
