@@ -1,0 +1,9 @@
+Detalhes da chave de API
+Chave de API
+AIzaSyA1qfUN9c77-Ft9f-N9blUYJG9pPXptVWI
+Nome
+chatbot whastapp
+Nome do projeto
+projects/1061808995433
+Número do projeto
+1061808995433
