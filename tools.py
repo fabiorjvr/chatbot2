@@ -57,9 +57,23 @@ class DatabaseTools:
         if self.conn:
             self.conn.close()
 
-    def get_top_products(self, limit: int = 1, month: int = None, year: int = None) -> list:
+    def get_smartphone_details_and_photos(self, modelo: str) -> list:
+        """Busca os detalhes de um smartphone e as URLs de suas fotos."""
+        query = """
+            SELECT
+                s.modelo, s.fabricante, s.info_geral, s.especificacoes_tecnicas,
+                s.performance_score, s.categoria, s.segmento,
+                array_agg(f.url_imagem) as fotos
+            FROM smartphones s
+            LEFT JOIN fotos f ON s.id = f.smartphone_id
+            WHERE lower(s.modelo) LIKE %s
+            GROUP BY s.id;
         """
-        Retorna os N produtos mais vendidos.
+        return self.executar_query(query, (f"%{modelo.lower()}%",))
+
+    def get_top_sold_products(self, limit: int = 1, month: int = None, year: int = None) -> list:
+        """
+        Retorna os N produtos mais vendidos, com base nas unidades vendidas.
         Pode ser filtrado por ano ou por mês e ano.
         - Para filtrar por ano, use o parâmetro 'year'.
         - Para filtrar por mês e ano, use os parâmetros 'month' e 'year'.
@@ -166,7 +180,11 @@ class DatabaseTools:
         return self.executar_query(query, tuple(params))
 
     def get_average_monthly_sales(self, year: int) -> list:
-        """Calcula a média de receita e unidades vendidas por mês em um ano."""
+        """
+        Calcula o faturamento médio mensal e a média de unidades vendidas para um ano específico.
+        Esta função é ideal para perguntas como 'Qual a média de faturamento mensal?' ou 'Qual a média de vendas por mês?'.
+        Ela retorna a receita média e o número médio de unidades vendidas por mês.
+        """
         query = """
             WITH vendas_mensais AS (
                 SELECT 

@@ -1,0 +1,3257 @@
+RAG Profissional Multimodal Completo para WhatsApp - Renato Tanner Smartphones
+📋 Visão Geral da Arquitetura
+Vou estruturar um RAG enterprise-grade que integra as tecnologias mais modernas de 2025. A arquitetura será totalmente modular, permitindo que Renato venda smartphones com inteligência contextual completa sobre o inventário, histórico de clientes, análises de performance e capacidade de processar imagens e áudios dos produtos.​
+
+Componentes principais:
+
+Vector Store: ChromaDB para busca semantic de documentos
+
+Embedding Models: Modelos multimodais para texto, imagens e áudio
+
+LLM: Groq Llama 3.1 (já usando no seu projeto)
+
+Processamento Multimodal: Whisper para áudio, CLAP para embeddings de áudio, vision models para imagens
+
+Framework RAG: LlamaIndex para orquestração profissional
+
+Storage: PostgreSQL (já tem) + S3/local storage para mídia
+
+API: FastAPI para handlers HTTP
+
+🏗️ Estrutura de Pastas do Projeto
+text
+chatwhatsapp-rag/
+├── rag/
+│   ├── __init__.py
+│   ├── config.py                      # Configurações centralizadas
+│   ├── embeddings.py                  # Modelos de embedding multimodais
+│   ├── vector_store.py                # ChromaDB setup e operações
+│   ├── document_processors.py         # Processadores de diferentes tipos
+│   ├── audio_processor.py             # Transcription com Whisper
+│   ├── image_processor.py             # Processamento de imagens
+│   ├── query_engine.py                # RAG Query Engine
+│   ├── memory_manager.py              # Conversational memory
+│   └── retriever.py                   # Hybrid retrieval logic
+│
+├── storage/
+│   ├── __init__.py
+│   ├── database.py                    # PostgreSQL operations
+│   ├── file_manager.py                # Gerenciamento de arquivos
+│   └── migrations/                    # Schema updates
+│
+├── api/
+│   ├── __init__.py
+│   ├── main.py                        # FastAPI app
+│   ├── handlers.py                    # API endpoints
+│   └── schemas.py                     # Pydantic models
+│
+├── whatsapp/
+│   ├── __init__.py
+│   ├── processor.py                   # Message processing
+│   ├── media_handler.py               # Download/upload mídia
+│   └── message_formatter.py           # Formatting responses
+│
+├── wppconnect_qrcode.js               # JS client (existente)
+├── requirements.txt
+├── .env
+├── docker-compose.yml
+└── README.md
+🔧 Requirements.txt Profissional
+text
+# Core Framework
+python-dotenv==1.0.0
+fastapi==0.104.1
+uvicorn==0.24.0
+pydantic==2.5.0
+
+# RAG & LLM
+llama-index==0.9.40
+llama-index-llms-groq==0.1.3
+llama-index-embeddings-huggingface==0.1.7
+langchain==0.1.0
+langchain-community==0.0.13
+
+# Vector Database
+chromadb==0.4.17
+hnswlib==0.7.0
+
+# Multimodal Processing
+openai-whisper==20231117
+librosa==0.10.0
+soundfile==0.12.1
+Pillow==10.1.0
+opencv-python==4.8.1.78
+clip-vision==0.0.2
+
+# Database
+psycopg2-binary==2.9.9
+sqlalchemy==2.0.23
+alembic==1.13.0
+
+# WhatsApp & HTTP
+requests==2.31.0
+aiohttp==3.9.1
+python-multipart==0.0.6
+
+# Data Processing
+pandas==2.1.3
+numpy==1.26.2
+scipy==1.11.4
+
+# Utilities
+pydantic-settings==2.1.0
+tenacity==8.2.3
+cachetools==5.3.2
+💾 1. Configuração Centralizada (config.py)
+python
+import os
+from functools import lru_cache
+from pydantic_settings import BaseSettings
+from typing import Literal
+
+class Settings(BaseSettings):
+    # Environment
+    ENV: Literal["development", "production"] = "development"
+    DEBUG: bool = True
+    
+    # LLM & RAG
+    GROQ_API_KEY: str
+    GROQ_MODEL: str = "llama-3.1-70b-versatile"
+    TEMPERATURE: float = 0.7
+    MAX_TOKENS: int = 2048
+    
+    # Embeddings
+    EMBEDDING_MODEL: str = "BAAI/bge-small-en-v1.5"  # Rápido e poderoso
+    EMBEDDING_DIMENSION: int = 384
+    
+    # ChromaDB
+    CHROMA_COLLECTION_NAME: str = "renato_smartphones"
+    CHROMA_PERSIST_DIR: str = "./data/chroma_db"
+    
+    # PostgreSQL
+    DATABASE_URL: str
+    SQLALCHEMY_POOL_SIZE: int = 20
+    SQLALCHEMY_MAX_OVERFLOW: int = 40
+    
+    # WhatsApp
+    WPPCONNECT_URL: str = "http://localhost:3000"
+    WPPCONNECT_SESSION: str = "renato_whatsapp"
+    WHATSAPP_WEBHOOK_SECRET: str = "your_webhook_secret"
+    
+    # Media Storage
+    MEDIA_STORAGE_PATH: str = "./data/media"
+    MAX_FILE_SIZE_MB: int = 50
+    ALLOWED_IMAGE_TYPES: list = ["jpg", "jpeg", "png", "webp"]
+    ALLOWED_AUDIO_TYPES: list = ["mp3", "m4a", "wav", "ogg"]
+    
+    # Whisper Audio
+    WHISPER_MODEL: str = "base"  # tiny, base, small, medium, large
+    WHISPER_LANGUAGE: str = "pt"  # Portuguese
+    
+    # RAG Parameters
+    CHUNK_SIZE: int = 512
+    CHUNK_OVERLAP: int = 100
+    TOP_K_RETRIEVAL: int = 5
+    RELEVANCE_THRESHOLD: float = 0.6
+    
+    # Vector Store Search
+    SIMILARITY_METRIC: str = "cosine"  # cosine, l2, ip
+    
+    # Cache
+    CACHE_TTL_SECONDS: int = 3600
+    ENABLE_CACHING: bool = True
+    
+    class Config:
+        env_file = ".env"
+        case_sensitive = True
+
+@lru_cache()
+def get_settings() -> Settings:
+    return Settings()
+
+settings = get_settings()
+🎯 2. Modelos de Embedding Multimodais (embeddings.py)
+python
+import os
+import numpy as np
+from typing import List, Union
+from functools import lru_cache
+import logging
+
+# Modelos profissionais 2025
+from sentence_transformers import SentenceTransformer
+from transformers import CLIPProcessor, CLIPModel, WhisperProcessor, WhisperForConditionalGeneration
+from PIL import Image
+import torch
+import librosa
+
+from config import settings
+
+logger = logging.getLogger(__name__)
+
+class MultimodalEmbeddings:
+    """
+    Embedding generator para texto, imagens e áudio.
+    Usa modelos especializados para cada modalidade.
+    """
+    
+    def __init__(self):
+        """Inicializa modelos de embedding"""
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        logger.info(f"Usando device: {self.device}")
+        
+        # Modelo de texto: BGE (otimizado para retrieval)
+        self.text_model = SentenceTransformer(
+            settings.EMBEDDING_MODEL,
+            device=self.device
+        )
+        
+        # Modelo multimodal: CLIP (imagens + texto)
+        self.clip_model = CLIPModel.from_pretrained(
+            "openai/clip-vit-base-patch32"
+        ).to(self.device)
+        self.clip_processor = CLIPProcessor.from_pretrained(
+            "openai/clip-vit-base-patch32"
+        )
+        
+        # Modelo de áudio: Whisper para transcription
+        # Será usado em audio_processor.py
+    
+    def embed_text(self, text: str) -> np.ndarray:
+        """
+        Gera embedding para texto.
+        
+        Args:
+            text: String para embedar
+            
+        Returns:
+            Embedding de dimensão 384
+        """
+        try:
+            embedding = self.text_model.encode(
+                text,
+                convert_to_numpy=True,
+                normalize_embeddings=True
+            )
+            return embedding.astype(np.float32)
+        except Exception as e:
+            logger.error(f"Erro ao embedar texto: {str(e)}")
+            raise
+    
+    def embed_batch_text(self, texts: List[str], batch_size: int = 32) -> np.ndarray:
+        """
+        Gera embeddings para múltiplos textos com batch processing.
+        
+        Args:
+            texts: Lista de strings
+            batch_size: Tamanho do batch para processamento
+            
+        Returns:
+            Array de embeddings
+        """
+        embeddings = self.text_model.encode(
+            texts,
+            batch_size=batch_size,
+            convert_to_numpy=True,
+            normalize_embeddings=True,
+            show_progress_bar=True
+        )
+        return embeddings.astype(np.float32)
+    
+    def embed_image(self, image_path: Union[str, Image.Image]) -> np.ndarray:
+        """
+        Gera embedding para imagem usando CLIP.
+        
+        Args:
+            image_path: Caminho da imagem ou objeto PIL Image
+            
+        Returns:
+            Embedding da imagem
+        """
+        try:
+            if isinstance(image_path, str):
+                image = Image.open(image_path).convert("RGB")
+            else:
+                image = image_path.convert("RGB")
+            
+            inputs = self.clip_processor(
+                images=image,
+                return_tensors="pt"
+            ).to(self.device)
+            
+            with torch.no_grad():
+                image_features = self.clip_model.get_image_features(**inputs)
+            
+            # Normalizar para compatibilidade com texto
+            embedding = torch.nn.functional.normalize(
+                image_features,
+                p=2,
+                dim=1
+            ).cpu().numpy()[0]
+            
+            return embedding.astype(np.float32)
+        except Exception as e:
+            logger.error(f"Erro ao embedar imagem: {str(e)}")
+            raise
+    
+    def embed_audio_transcription(self, text_from_audio: str) -> np.ndarray:
+        """
+        Gera embedding para transcrição de áudio.
+        O áudio é primeiro convertido para texto via Whisper,
+        depois embedado como texto normal.
+        
+        Args:
+            text_from_audio: Transcrição do áudio
+            
+        Returns:
+            Embedding do áudio transcrito
+        """
+        return self.embed_text(text_from_audio)
+    
+    def embed_hybrid(self, 
+                     text: str = None, 
+                     image_path: Union[str, Image.Image] = None) -> np.ndarray:
+        """
+        Combina embeddings de texto e imagem em um embedding híbrido.
+        Útil para processos com ambos os tipos de dados.
+        
+        Args:
+            text: Descrição textual
+            image_path: Caminho ou Image object
+            
+        Returns:
+            Embedding híbrido (média ponderada)
+        """
+        embeddings = []
+        weights = []
+        
+        if text:
+            text_emb = self.embed_text(text)
+            embeddings.append(text_emb)
+            weights.append(0.6)  # Peso maior para texto
+        
+        if image_path:
+            img_emb = self.embed_image(image_path)
+            embeddings.append(img_emb)
+            weights.append(0.4)  # Peso menor para imagem
+        
+        if not embeddings:
+            raise ValueError("Forneça texto ou imagem para embedding híbrido")
+        
+        # Média ponderada dos embeddings
+        weights = np.array(weights) / sum(weights)
+        hybrid = np.average(embeddings, axis=0, weights=weights)
+        
+        return hybrid.astype(np.float32)
+
+@lru_cache(maxsize=1)
+def get_embedding_manager() -> MultimodalEmbeddings:
+    """Factory function para embeddings (singleton)"""
+    return MultimodalEmbeddings()
+🗄️ 3. ChromaDB Vector Store Setup (vector_store.py)
+python
+import chromadb
+from chromadb.config import Settings as ChromaSettings
+import numpy as np
+from typing import List, Dict, Any, Optional
+import logging
+
+from config import settings
+from embeddings import get_embedding_manager
+
+logger = logging.getLogger(__name__)
+
+class VectorStoreManager:
+    """
+    Gerenciador do ChromaDB para armazenamento vetorial.
+    Implementa operações CRUD e busca hybrid.
+    """
+    
+    def __init__(self):
+        """Inicializa ChromaDB com persistência"""
+        # Criar diretório se não existir
+        import os
+        os.makedirs(settings.CHROMA_PERSIST_DIR, exist_ok=True)
+        
+        # Configurar ChromaDB com persistência
+        chroma_settings = ChromaSettings(
+            chroma_db_impl="duckdb+parquet",
+            persist_directory=settings.CHROMA_PERSIST_DIR,
+            anonymized_telemetry=False,
+        )
+        
+        self.client = chromadb.Client(chroma_settings)
+        
+        # Collection para documentos do Renato
+        self.collection = self.client.get_or_create_collection(
+            name=settings.CHROMA_COLLECTION_NAME,
+            metadata={
+                "hnsw:space": settings.SIMILARITY_METRIC,
+                "hnsw:construction_ef": 200,
+                "hnsw:ef": 200,
+            }
+        )
+        
+        self.embedding_manager = get_embedding_manager()
+        logger.info(f"ChromaDB initialized com collection: {settings.CHROMA_COLLECTION_NAME}")
+    
+    def add_documents(self, 
+                     documents: List[str],
+                     metadatas: List[Dict[str, Any]],
+                     ids: List[str] = None,
+                     doc_type: str = "text") -> List[str]:
+        """
+        Adiciona documentos ao vector store.
+        
+        Args:
+            documents: Lista de conteúdos
+            metadatas: Metadados associados
+            ids: IDs customizados (gerado automaticamente se None)
+            doc_type: Tipo do documento (text, image, audio)
+            
+        Returns:
+            Lista de IDs dos documentos adicionados
+        """
+        try:
+            # Gerar embeddings em batch
+            embeddings = self.embedding_manager.embed_batch_text(documents)
+            
+            # ChromaDB espera embeddings como lista de listas
+            embeddings_list = embeddings.tolist()
+            
+            # Adicionar documento type ao metadata
+            for metadata in metadatas:
+                metadata["doc_type"] = doc_type
+            
+            # Adicionar ao ChromaDB
+            self.collection.add(
+                ids=ids,
+                documents=documents,
+                embeddings=embeddings_list,
+                metadatas=metadatas
+            )
+            
+            logger.info(f"Adicionados {len(documents)} documentos ao ChromaDB")
+            return ids
+        
+        except Exception as e:
+            logger.error(f"Erro ao adicionar documentos: {str(e)}")
+            raise
+    
+    def add_image_document(self,
+                          image_path: str,
+                          description: str,
+                          metadata: Dict[str, Any],
+                          doc_id: str = None) -> str:
+        """
+        Adiciona documento com imagem.
+        
+        Args:
+            image_path: Caminho da imagem
+            description: Descrição textual
+            metadata: Metadados
+            doc_id: ID customizado
+            
+        Returns:
+            ID do documento adicionado
+        """
+        try:
+            # Gerar embedding híbrido (texto + imagem)
+            hybrid_embedding = self.embedding_manager.embed_hybrid(
+                text=description,
+                image_path=image_path
+            )
+            
+            metadata["image_path"] = image_path
+            metadata["doc_type"] = "image"
+            
+            self.collection.add(
+                ids=[doc_id] if doc_id else None,
+                documents=[description],
+                embeddings=[hybrid_embedding.tolist()],
+                metadatas=[metadata]
+            )
+            
+            logger.info(f"Imagem adicionada ao ChromaDB: {image_path}")
+            return doc_id
+        
+        except Exception as e:
+            logger.error(f"Erro ao adicionar imagem: {str(e)}")
+            raise
+    
+    def search(self,
+              query_text: str,
+              query_type: str = "text",
+              n_results: int = None,
+              where_filter: Dict = None) -> Dict[str, Any]:
+        """
+        Busca semantic no vector store.
+        
+        Args:
+            query_text: Query em linguagem natural
+            query_type: Tipo de query (text, image)
+            n_results: Número de resultados (default: settings.TOP_K_RETRIEVAL)
+            where_filter: Filtro metadata (ChromaDB where syntax)
+            
+        Returns:
+            Dict com documentos e scores
+        """
+        n_results = n_results or settings.TOP_K_RETRIEVAL
+        
+        try:
+            # Gerar embedding da query
+            if query_type == "text":
+                query_embedding = self.embedding_manager.embed_text(query_text)
+            else:
+                query_embedding = self.embedding_manager.embed_image(query_text)
+            
+            # Buscar no ChromaDB
+            results = self.collection.query(
+                query_embeddings=[query_embedding.tolist()],
+                n_results=n_results,
+                where=where_filter,
+                include=["documents", "metadatas", "distances", "embeddings"]
+            )
+            
+            # Converter distances (euclidean) para similarity scores
+            similarities = [1 - (d / 2) for d in results["distances"][0]]
+            
+            # Filtrar por threshold
+            filtered_results = []
+            for doc, metadata, similarity in zip(
+                results["documents"][0],
+                results["metadatas"][0],
+                similarities
+            ):
+                if similarity >= settings.RELEVANCE_THRESHOLD:
+                    filtered_results.append({
+                        "document": doc,
+                        "metadata": metadata,
+                        "similarity_score": float(similarity)
+                    })
+            
+            logger.info(f"Busca retornou {len(filtered_results)} resultados relevantes")
+            return {
+                "results": filtered_results,
+                "total_found": len(filtered_results)
+            }
+        
+        except Exception as e:
+            logger.error(f"Erro na busca: {str(e)}")
+            raise
+    
+    def hybrid_search(self,
+                     query_text: str,
+                     image_path: str = None,
+                     n_results: int = None) -> Dict[str, Any]:
+        """
+        Busca híbrida combinando texto e imagem.
+        
+        Args:
+            query_text: Query textual
+            image_path: Caminho da imagem (opcional)
+            n_results: Número de resultados
+            
+        Returns:
+            Resultados combinados
+        """
+        n_results = n_results or settings.TOP_K_RETRIEVAL
+        
+        try:
+            # Gerar embedding híbrido
+            hybrid_embedding = self.embedding_manager.embed_hybrid(
+                text=query_text,
+                image_path=image_path
+            )
+            
+            results = self.collection.query(
+                query_embeddings=[hybrid_embedding.tolist()],
+                n_results=n_results,
+                include=["documents", "metadatas", "distances"]
+            )
+            
+            similarities = [1 - (d / 2) for d in results["distances"][0]]
+            
+            filtered_results = []
+            for doc, metadata, similarity in zip(
+                results["documents"][0],
+                results["metadatas"][0],
+                similarities
+            ):
+                if similarity >= settings.RELEVANCE_THRESHOLD:
+                    filtered_results.append({
+                        "document": doc,
+                        "metadata": metadata,
+                        "similarity_score": float(similarity)
+                    })
+            
+            return {"results": filtered_results, "total_found": len(filtered_results)}
+        
+        except Exception as e:
+            logger.error(f"Erro na busca híbrida: {str(e)}")
+            raise
+    
+    def update_document(self, doc_id: str, new_content: str, new_metadata: Dict = None):
+        """Atualiza documento existente"""
+        try:
+            embedding = self.embedding_manager.embed_text(new_content)
+            
+            self.collection.update(
+                ids=[doc_id],
+                documents=[new_content],
+                embeddings=[embedding.tolist()],
+                metadatas=[new_metadata] if new_metadata else None
+            )
+            logger.info(f"Documento {doc_id} atualizado")
+        except Exception as e:
+            logger.error(f"Erro ao atualizar documento: {str(e)}")
+            raise
+    
+    def delete_document(self, doc_id: str):
+        """Deleta documento"""
+        try:
+            self.collection.delete(ids=[doc_id])
+            logger.info(f"Documento {doc_id} deletado")
+        except Exception as e:
+            logger.error(f"Erro ao deletar documento: {str(e)}")
+            raise
+    
+    def get_collection_stats(self) -> Dict[str, Any]:
+        """Retorna estatísticas da collection"""
+        count = self.collection.count()
+        return {
+            "total_documents": count,
+            "collection_name": settings.CHROMA_COLLECTION_NAME,
+            "embedding_dimension": settings.EMBEDDING_DIMENSION
+        }
+    
+    def delete_all_documents(self):
+        """Limpa toda a collection (use com cuidado!)"""
+        self.client.delete_collection(name=settings.CHROMA_COLLECTION_NAME)
+        self.collection = self.client.get_or_create_collection(
+            name=settings.CHROMA_COLLECTION_NAME
+        )
+        logger.warning("Todos os documentos foram deletados")
+🎙️ 4. Processador de Áudio Profissional (audio_processor.py)
+python
+import os
+import whisper
+import librosa
+import soundfile as sf
+from typing import Tuple, Dict, Any
+import logging
+import numpy as np
+
+from config import settings
+from embeddings import get_embedding_manager
+
+logger = logging.getLogger(__name__)
+
+class AudioProcessor:
+    """
+    Processador de áudio profissional com Whisper.
+    Transcreve áudio e gera embeddings contextualmente ricos.
+    """
+    
+    def __init__(self):
+        """Inicializa modelo Whisper"""
+        logger.info(f"Carregando Whisper modelo: {settings.WHISPER_MODEL}")
+        self.model = whisper.load_model(
+            settings.WHISPER_MODEL,
+            device="cuda" if __import__("torch").cuda.is_available() else "cpu"
+        )
+        self.embedding_manager = get_embedding_manager()
+    
+    def transcribe(self, audio_path: str, language: str = None) -> Dict[str, Any]:
+        """
+        Transcreve áudio para texto.
+        
+        Args:
+            audio_path: Caminho do arquivo de áudio
+            language: Código do idioma (pt, en, es, etc.)
+            
+        Returns:
+            Dict com transcrição e metadados
+        """
+        try:
+            if not os.path.exists(audio_path):
+                raise FileNotFoundError(f"Arquivo de áudio não encontrado: {audio_path}")
+            
+            language = language or settings.WHISPER_LANGUAGE
+            
+            logger.info(f"Transcrevendo áudio: {audio_path}")
+            result = self.model.transcribe(
+                audio_path,
+                language=language,
+                task="transcribe",
+                verbose=False,
+                temperature=0.0,  # Determinístico
+            )
+            
+            transcription = result["text"].strip()
+            
+            # Extrair timestamps dos segmentos para contexto temporal
+            segments_info = []
+            for segment in result["segments"]:
+                segments_info.append({
+                    "start": segment["start"],
+                    "end": segment["end"],
+                    "text": segment["text"]
+                })
+            
+            logger.info(f"Transcrição concluída: {len(transcription)} caracteres")
+            
+            return {
+                "full_transcription": transcription,
+                "segments": segments_info,
+                "language_detected": result.get("language", "unknown"),
+                "duration_seconds": self._get_audio_duration(audio_path)
+            }
+        
+        except Exception as e:
+            logger.error(f"Erro na transcrição: {str(e)}")
+            raise
+    
+    def extract_audio_features(self, audio_path: str) -> Dict[str, Any]:
+        """
+        Extrai características de áudio para melhor contexto.
+        
+        Args:
+            audio_path: Caminho do arquivo de áudio
+            
+        Returns:
+            Dict com características extraídas
+        """
+        try:
+            y, sr = librosa.load(audio_path, sr=None)
+            
+            # Extrair características
+            duration = librosa.get_duration(y=y, sr=sr)
+            
+            # Espectrograma
+            S = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=128)
+            S_db = librosa.power_to_db(S, ref=np.max)
+            
+            # Centroide espectral
+            spectral_centroid = librosa.feature.spectral_centroid(y=y, sr=sr)[0]
+            
+            # Zero crossing rate
+            zcr = librosa.feature.zero_crossing_rate(y=y)[0]
+            
+            # MFCC (Mel-Frequency Cepstral Coefficients)
+            mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
+            
+            return {
+                "duration": float(duration),
+                "sample_rate": int(sr),
+                "spectral_centroid_mean": float(np.mean(spectral_centroid)),
+                "spectral_centroid_std": float(np.std(spectral_centroid)),
+                "zcr_mean": float(np.mean(zcr)),
+                "zcr_std": float(np.std(zcr)),
+                "mfcc_mean": np.mean(mfcc, axis=1).tolist(),
+                "loudness": float(np.sqrt(np.mean(y**2)))
+            }
+        
+        except Exception as e:
+            logger.error(f"Erro ao extrair features de áudio: {str(e)}")
+            raise
+    
+    def create_audio_context(self, audio_path: str) -> str:
+        """
+        Cria um contexto rico para o áudio, combinando
+        transcrição com análise de características.
+        
+        Args:
+            audio_path: Caminho do arquivo de áudio
+            
+        Returns:
+            String com contexto aumentado
+        """
+        try:
+            transcription = self.transcribe(audio_path)
+            features = self.extract_audio_features(audio_path)
+            
+            # Criar contexto aumentado
+            context = f"""
+            TRANSCRIÇÃO DE ÁUDIO:
+            {transcription['full_transcription']}
+            
+            METADADOS DE ÁUDIO:
+            - Duração: {features['duration']:.2f} segundos
+            - Idioma detectado: {transcription['language_detected']}
+            - Volume (loudness): {features['loudness']:.4f}
+            - Centroide espectral médio: {features['spectral_centroid_mean']:.2f}
+            
+            CONTEXTO TEMPORAL DOS SEGMENTOS:
+            """
+            
+            for i, segment in enumerate(transcription['segments'][:5]):  # Primeiros 5
+                context += f"\n[{segment['start']:.1f}s - {segment['end']:.1f}s]: {segment['text']}"
+            
+            return context.strip()
+        
+        except Exception as e:
+            logger.error(f"Erro ao criar contexto de áudio: {str(e)}")
+            raise
+    
+    def _get_audio_duration(self, audio_path: str) -> float:
+        """Retorna duração do áudio em segundos"""
+        try:
+            y, sr = librosa.load(audio_path, sr=None)
+            return float(librosa.get_duration(y=y, sr=sr))
+        except:
+            return 0.0
+    
+    def validate_audio_file(self, file_path: str) -> Tuple[bool, str]:
+        """
+        Valida se arquivo de áudio é válido.
+        
+        Returns:
+            Tuple (is_valid, error_message)
+        """
+        if not os.path.exists(file_path):
+            return False, "Arquivo não encontrado"
+        
+        file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+        if file_size_mb > settings.MAX_FILE_SIZE_MB:
+            return False, f"Arquivo > {settings.MAX_FILE_SIZE_MB}MB"
+        
+        file_ext = os.path.splitext(file_path)[1][1:].lower()
+        if file_ext not in settings.ALLOWED_AUDIO_TYPES:
+            return False, f"Tipo não permitido: {file_ext}"
+        
+        try:
+            librosa.load(file_path, sr=None, duration=5)  # Testar primeiros 5s
+            return True, "OK"
+        except Exception as e:
+            return False, f"Arquivo corrompido: {str(e)}"
+🖼️ 5. Processador de Imagens (image_processor.py)
+python
+import os
+from PIL import Image
+import cv2
+import numpy as np
+from typing import Dict, Any, Tuple, List
+import logging
+
+from config import settings
+from embeddings import get_embedding_manager
+
+logger = logging.getLogger(__name__)
+
+class ImageProcessor:
+    """
+    Processador de imagens com visão computacional avançada.
+    Extrai características visuais e gera descrições contextuais.
+    """
+    
+    def __init__(self):
+        """Inicializa processador"""
+        self.embedding_manager = get_embedding_manager()
+    
+    def validate_image_file(self, file_path: str) -> Tuple[bool, str]:
+        """Valida arquivo de imagem"""
+        if not os.path.exists(file_path):
+            return False, "Arquivo não encontrado"
+        
+        file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+        if file_size_mb > settings.MAX_FILE_SIZE_MB:
+            return False, f"Arquivo > {settings.MAX_FILE_SIZE_MB}MB"
+        
+        file_ext = os.path.splitext(file_path)[1][1:].lower()
+        if file_ext not in settings.ALLOWED_IMAGE_TYPES:
+            return False, f"Tipo não permitido: {file_ext}"
+        
+        try:
+            Image.open(file_path).verify()
+            return True, "OK"
+        except Exception as e:
+            return False, f"Arquivo corrompido: {str(e)}"
+    
+    def extract_image_features(self, image_path: str) -> Dict[str, Any]:
+        """
+        Extrai características visuais de imagem.
+        
+        Args:
+            image_path: Caminho da imagem
+            
+        Returns:
+            Dict com características
+        """
+        try:
+            # Carregar com PIL e OpenCV
+            pil_image = Image.open(image_path).convert("RGB")
+            cv_image = cv2.imread(image_path)
+            cv_image_rgb = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
+            
+            width, height = pil_image.size
+            
+            # Análise de cores
+            np_image = np.array(pil_image)
+            avg_color_r = int(np.mean(np_image[:, :, 0]))
+            avg_color_g = int(np.mean(np_image[:, :, 1]))
+            avg_color_b = int(np.mean(np_image[:, :, 2]))
+            
+            # Detecção de bordas (Canny)
+            gray = cv2.cvtColor(cv_image_rgb, cv2.COLOR_RGB2GRAY)
+            edges = cv2.Canny(gray, 100, 200)
+            edge_count = np.sum(edges > 0)
+            
+            # Contraste e brilho
+            contrast = np.std(gray)
+            brightness = np.mean(gray)
+            
+            # Histograma de saturação
+            hsv = cv2.cvtColor(cv_image_rgb, cv2.COLOR_RGB2HSV)
+            saturation = np.mean(hsv[:, :, 1])
+            
+            return {
+                "dimensions": {
+                    "width": width,
+                    "height": height,
+                    "aspect_ratio": width / height if height > 0 else 0
+                },
+                "color_analysis": {
+                    "average_rgb": [avg_color_r, avg_color_g, avg_color_b],
+                    "dominant_color": self._get_dominant_color(np_image)
+                },
+                "visual_features": {
+                    "contrast": float(contrast),
+                    "brightness": float(brightness),
+                    "saturation": float(saturation),
+                    "edge_density": float(edge_count / (width * height))
+                }
+            }
+        
+        except Exception as e:
+            logger.error(f"Erro ao extrair features de imagem: {str(e)}")
+            raise
+    
+    def _get_dominant_color(self, image_array: np.ndarray, k: int = 3) -> str:
+        """Retorna cor dominante usando k-means"""
+        try:
+            pixels = image_array.reshape((-1, 3)).astype(np.float32)
+            _, labels, centers = cv2.kmeans(
+                pixels,
+                k,
+                None,
+                (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0),
+                10,
+                cv2.KMEANS_RANDOM_CENTERS
+            )
+            unique, counts = np.unique(labels, return_counts=True)
+            dominant_idx = unique[counts.argmax()]
+            dominant_color = centers[dominant_idx].astype(int)
+            return f"RGB({dominant_color[0]}, {dominant_color[1]}, {dominant_color[2]})"
+        except:
+            return "Unknown"
+    
+    def resize_image(self, image_path: str, max_width: int = 1024) -> str:
+        """
+        Redimensiona imagem mantendo proporção.
+        
+        Args:
+            image_path: Caminho original
+            max_width: Largura máxima
+            
+        Returns:
+            Caminho da imagem redimensionada
+        """
+        try:
+            img = Image.open(image_path)
+            ratio = max_width / img.width if img.width > max_width else 1
+            
+            if ratio < 1:
+                new_size = (int(img.width * ratio), int(img.height * ratio))
+                img = img.resize(new_size, Image.Resampling.LANCZOS)
+            
+            # Salvar com sufixo
+            base, ext = os.path.splitext(image_path)
+            resized_path = f"{base}_resized{ext}"
+            img.save(resized_path, quality=90, optimize=True)
+            
+            logger.info(f"Imagem redimensionada: {resized_path}")
+            return resized_path
+        
+        except Exception as e:
+            logger.error(f"Erro ao redimensionar imagem: {str(e)}")
+            raise
+    
+    def create_image_context(self, image_path: str, description: str = "") -> str:
+        """
+        Cria contexto rico combinando features visuais com descrição.
+        
+        Args:
+            image_path: Caminho da imagem
+            description: Descrição fornecida pelo usuário
+            
+        Returns:
+            String com contexto aumentado
+        """
+        try:
+            features = self.extract_image_features(image_path)
+            
+            context = f"""
+            DESCRIÇÃO DA IMAGEM:
+            {description if description else "Sem descrição fornecida"}
+            
+            ANÁLISE VISUAL:
+            - Dimensões: {features['dimensions']['width']}x{features['dimensions']['height']}px
+            - Razão de aspecto: {features['dimensions']['aspect_ratio']:.2f}
+            - Cor média: RGB{tuple(features['color_analysis']['average_rgb'])}
+            - Cor dominante: {features['color_analysis']['dominant_color']}
+            - Brilho: {features['visual_features']['brightness']:.1f}
+            - Contraste: {features['visual_features']['contrast']:.1f}
+            - Saturação: {features['visual_features']['saturation']:.1f}
+            - Densidade de bordas: {features['visual_features']['edge_density']:.4f}
+            """
+            
+            return context.strip()
+        
+        except Exception as e:
+            logger.error(f"Erro ao criar contexto de imagem: {str(e)}")
+            raise
+📄 6. Processador de Documentos (document_processors.py)
+python
+import os
+from typing import List, Dict, Any
+import logging
+from datetime import datetime
+
+from config import settings
+
+logger = logging.getLogger(__name__)
+
+class DocumentProcessor:
+    """
+    Processa diferentes tipos de documentos e os converte
+    em chunks otimizados para RAG.
+    """
+    
+    @staticmethod
+    def chunk_text(text: str, 
+                   chunk_size: int = None,
+                   chunk_overlap: int = None) -> List[str]:
+        """
+        Divide texto em chunks com sobreposição.
+        
+        Args:
+            text: Texto completo
+            chunk_size: Tamanho do chunk (default: settings.CHUNK_SIZE)
+            chunk_overlap: Sobreposição entre chunks
+            
+        Returns:
+            Lista de chunks
+        """
+        chunk_size = chunk_size or settings.CHUNK_SIZE
+        chunk_overlap = chunk_overlap or settings.CHUNK_OVERLAP
+        
+        chunks = []
+        start = 0
+        
+        while start < len(text):
+            end = start + chunk_size
+            chunk = text[start:end]
+            chunks.append(chunk)
+            start += chunk_size - chunk_overlap
+        
+        logger.info(f"Texto dividido em {len(chunks)} chunks")
+        return chunks
+    
+    @staticmethod
+    def process_product_catalog(products: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+        """
+        Processa catálogo de produtos para RAG.
+        
+        Args:
+            products: Lista de produtos com specs
+            
+        Returns:
+            Documentos formatados para o vector store
+        """
+        documents = []
+        
+        for product in products:
+            # Criar descrição rica para cada produto
+            doc_text = f"""
+            PRODUTO: {product.get('name', 'Unknown')}
+            MODELO: {product.get('model', 'N/A')}
+            MARCA: {product.get('brand', 'N/A')}
+            
+            ESPECIFICAÇÕES:
+            - Tela: {product.get('display', 'N/A')}
+            - Processador: {product.get('processor', 'N/A')}
+            - RAM: {product.get('ram', 'N/A')}
+            - Armazenamento: {product.get('storage', 'N/A')}
+            - Câmera Principal: {product.get('main_camera', 'N/A')}
+            - Câmera Frontal: {product.get('front_camera', 'N/A')}
+            - Bateria: {product.get('battery', 'N/A')}
+            - SO: {product.get('os', 'N/A')}
+            
+            PREÇO: R$ {product.get('price', 'N/A')}
+            ESTOQUE: {product.get('stock', 0)} unidades
+            
+            DESCRIÇÃO:
+            {product.get('description', 'Sem descrição disponível')}
+            
+            DIFERENCIAIS:
+            {product.get('highlights', 'Nenhum destaque especial')}
+            """
+            
+            documents.append({
+                "content": doc_text.strip(),
+                "metadata": {
+                    "product_id": product.get('id'),
+                    "brand": product.get('brand'),
+                    "model": product.get('model'),
+                    "price": product.get('price'),
+                    "type": "product",
+                    "created_at": datetime.now().isoformat()
+                }
+            })
+        
+        return documents
+    
+    @staticmethod
+    def process_sales_history(sales: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+        """
+        Processa histórico de vendas para contexto RAG.
+        
+        Args:
+            sales: Lista de registros de vendas
+            
+        Returns:
+            Documentos formatados
+        """
+        documents = []
+        
+        for sale in sales:
+            doc_text = f"""
+            VENDA #{sale.get('id')}
+            DATA: {sale.get('date')}
+            CLIENTE: {sale.get('customer_name')}
+            
+            PRODUTO VENDIDO:
+            - Nome: {sale.get('product_name')}
+            - Modelo: {sale.get('product_model')}
+            - Preço: R$ {sale.get('amount')}
+            
+            STATUS: {sale.get('status')}
+            MÉTODO PAGAMENTO: {sale.get('payment_method')}
+            
+            NOTAS:
+            {sale.get('notes', 'Sem notas adicionais')}
+            """
+            
+            documents.append({
+                "content": doc_text.strip(),
+                "metadata": {
+                    "sale_id": sale.get('id'),
+                    "customer": sale.get('customer_name'),
+                    "amount": sale.get('amount'),
+                    "type": "sale",
+                    "date": sale.get('date')
+                }
+            })
+        
+        return documents
+    
+    @staticmethod
+    def process_customer_profiles(customers: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+        """
+        Processa perfis de clientes para contexto personalizado.
+        
+        Args:
+            customers: Lista de clientes
+            
+        Returns:
+            Documentos formatados
+        """
+        documents = []
+        
+        for customer in customers:
+            doc_text = f"""
+            PERFIL DE CLIENTE:
+            Nome: {customer.get('name')}
+            Email: {customer.get('email')}
+            Telefone: {customer.get('phone')}
+            
+            HISTÓRICO:
+            - Total de compras: {customer.get('total_purchases')}
+            - Valor total gasto: R$ {customer.get('lifetime_value')}
+            - Última compra: {customer.get('last_purchase_date')}
+            - Preferências: {customer.get('preferences', 'Nenhuma registrada')}
+            
+            NOTAS COMERCIAIS:
+            {customer.get('notes', 'Nenhuma nota')}
+            """
+            
+            documents.append({
+                "content": doc_text.strip(),
+                "metadata": {
+                    "customer_id": customer.get('id'),
+                    "name": customer.get('name'),
+                    "lifetime_value": customer.get('lifetime_value'),
+                    "type": "customer",
+                    "created_at": customer.get('created_at')
+                }
+            })
+        
+        return documents
+🧠 7. Query Engine com Memory (query_engine.py)
+python
+from typing import List, Dict, Any, Optional
+import logging
+from datetime import datetime
+
+from llama_index.core import Document as LlamaDocument
+from llama_index.llms.groq import Groq
+from llama_index.core.query_engine import RetrieverQueryEngine
+from llama_index.core.retrievers import VectorIndexRetriever
+from llama_index.core.indices.vector_store import VectorStoreIndex
+from llama_index.core.vector_stores import ChromaVectorStore
+
+from config import settings
+from vector_store import VectorStoreManager
+from embeddings import get_embedding_manager
+from memory_manager import ConversationMemory
+
+logger = logging.getLogger(__name__)
+
+class RAGQueryEngine:
+    """
+    Engine RAG profissional para gerar respostas contextuais.
+    Integra retrieval com LLM e conversational memory.
+    """
+    
+    def __init__(self):
+        """Inicializa query engine"""
+        self.vector_store_manager = VectorStoreManager()
+        self.embedding_manager = get_embedding_manager()
+        self.conversation_memory = ConversationMemory()
+        
+        # Inicializar LLM Groq
+        self.llm = Groq(
+            model=settings.GROQ_MODEL,
+            api_key=settings.GROQ_API_KEY,
+            temperature=settings.TEMPERATURE,
+            max_tokens=settings.MAX_TOKENS
+        )
+        
+        logger.info("RAG Query Engine inicializado")
+    
+    def query(self, 
+              user_query: str,
+              conversation_id: str,
+              context_type: str = "text",
+              image_path: str = None,
+              include_memory: bool = True) -> Dict[str, Any]:
+        """
+        Executa query completo com RAG.
+        
+        Args:
+            user_query: Pergunta do usuário
+            conversation_id: ID da conversa
+            context_type: Tipo de contexto (text, image, hybrid)
+            image_path: Caminho da imagem (se aplicável)
+            include_memory: Incluir conversational memory
+            
+        Returns:
+            Dict com resposta e metadados
+        """
+        try:
+            logger.info(f"Processando query: {user_query[:50]}...")
+            
+            # 1. Recuperar contexto de conversação anterior
+            conversation_context = ""
+            if include_memory:
+                conversation_context = self.conversation_memory.get_context(
+                    conversation_id,
+                    max_messages=5
+                )
+            
+            # 2. Buscar documentos relevantes no vector store
+            if context_type == "hybrid" and image_path:
+                search_results = self.vector_store_manager.hybrid_search(
+                    query_text=user_query,
+                    image_path=image_path
+                )
+            else:
+                search_results = self.vector_store_manager.search(
+                    query_text=user_query,
+                    query_type=context_type
+                )
+            
+            # 3. Construir contexto aumentado
+            retrieved_docs = "\n\n---\n\n".join([
+                r["document"] for r in search_results["results"]
+            ])
+            
+            # 4. Montar prompt com RAG
+            system_prompt = self._build_system_prompt()
+            
+            rag_prompt = f"""
+            {system_prompt}
+            
+            CONTEXTO DE CONVERSA ANTERIOR:
+            {conversation_context if conversation_context else "Nenhuma conversa anterior"}
+            
+            DOCUMENTOS RELEVANTES DO KNOWLEDGE BASE:
+            {retrieved_docs if retrieved_docs else "Nenhum documento relevante encontrado"}
+            
+            PERGUNTA DO CLIENTE:
+            {user_query}
+            
+            Responda considerando o contexto do cliente (Renato Tanner - vendedor de smartphones),
+            os documentos recuperados, e o histórico de conversa. Seja profissional, amigável e útil.
+            """
+            
+            # 5. Chamar LLM
+            response = self.llm.complete(rag_prompt)
+            answer = response.text
+            
+            # 6. Guardar interação na memória
+            if include_memory:
+                self.conversation_memory.add_message(
+                    conversation_id=conversation_id,
+                    role="user",
+                    content=user_query
+                )
+                self.conversation_memory.add_message(
+                    conversation_id=conversation_id,
+                    role="assistant",
+                    content=answer
+                )
+            
+            # 7. Retornar resposta estruturada
+            return {
+                "answer": answer,
+                "sources": [
+                    {
+                        "document": r["document"][:200],
+                        "similarity": r["similarity_score"],
+                        "metadata": r["metadata"]
+                    }
+                    for r in search_results["results"][:3]
+                ],
+                "retrieved_docs_count": search_results["total_found"],
+                "model_used": settings.GROQ_MODEL,
+                "timestamp": datetime.now().isoformat()
+            }
+        
+        except Exception as e:
+            logger.error(f"Erro no query engine: {str(e)}")
+            raise
+    
+    def _build_system_prompt(self) -> str:
+        """Constrói system prompt profissional para vendedor"""
+        return """
+        VOCÊ É UM ASSISTENTE DE VENDAS IA PROFISSIONAL.
+        
+        CONTEXTO:
+        - Trabalhando para: Renato Tanner
+        - Negócio: Venda de Smartphones
+        - Objetivo: Ajudar clientes a encontrar o melhor device para suas necessidades
+        - Tom: Profissional, amigável, consultivo e persuasivo
+        
+        SEUS DEVERES:
+        1. Entender as necessidades do cliente
+        2. Recomendar produtos adequados baseado em features e preço
+        3. Destacar diferenciais dos produtos
+        4. Fornecer informações técnicas precisas
+        5. Lidar com objeções profissionalmente
+        6. Criar urgência quando apropriado
+        7. Manter histórico de preferências do cliente
+        
+        DIRETRIZES:
+        - Sempre cite specs técnicas quando relevante
+        - Use comparações para destacar valor
+        - Mencione promoções e ofertas disponíveis
+        - Seja honesto sobre limitações de produtos
+        - Ofereça múltiplas opções quando possível
+        - Pergunte sobre o uso (gaming, trabalho, fotografia, etc.)
+        
+        RESPONDA EM PORTUGUÊS BRASILEIRO E MANTENHA RESPOSTAS CONCISAS MAS INFORMATIVAS.
+        """
+    
+    def query_with_streaming(self,
+                            user_query: str,
+                            conversation_id: str):
+        """
+        Query com streaming de resposta (para UX melhor).
+        
+        Args:
+            user_query: Pergunta do usuário
+            conversation_id: ID da conversa
+            
+        Yields:
+            Chunks de texto da resposta
+        """
+        try:
+            # Recuperar contexto
+            conversation_context = self.conversation_memory.get_context(
+                conversation_id,
+                max_messages=5
+            )
+            
+            search_results = self.vector_store_manager.search(
+                query_text=user_query
+            )
+            
+            retrieved_docs = "\n\n---\n\n".join([
+                r["document"] for r in search_results["results"]
+            ])
+            
+            system_prompt = self._build_system_prompt()
+            
+            rag_prompt = f"""
+            {system_prompt}
+            
+            CONTEXTO: {conversation_context or "Nenhum"}
+            DOCS: {retrieved_docs or "Nenhum"}
+            PERGUNTA: {user_query}
+            """
+            
+            # Stream de resposta
+            response = self.llm.complete(rag_prompt)
+            
+            # Guardar na memória
+            self.conversation_memory.add_message(
+                conversation_id=conversation_id,
+                role="user",
+                content=user_query
+            )
+            self.conversation_memory.add_message(
+                conversation_id=conversation_id,
+                role="assistant",
+                content=response.text
+            )
+            
+            yield response.text
+        
+        except Exception as e:
+            logger.error(f"Erro em streaming: {str(e)}")
+            yield f"Erro ao processar sua pergunta: {str(e)}"
+💾 8. Memory Manager (memory_manager.py)
+python
+from typing import List, Dict, Any
+from collections import deque
+import logging
+from datetime import datetime, timedelta
+import json
+
+logger = logging.getLogger(__name__)
+
+class ConversationMemory:
+    """
+    Gerencia memória de conversas para contexto contínuo.
+    Implementa sliding window e context summarization.
+    """
+    
+    def __init__(self, max_messages: int = 50, ttl_hours: int = 24):
+        """
+        Args:
+            max_messages: Máximo de mensagens por conversa
+            ttl_hours: Tempo de vida da conversa em horas
+        """
+        self.conversations: Dict[str, Dict[str, Any]] = {}
+        self.max_messages = max_messages
+        self.ttl_hours = ttl_hours
+    
+    def add_message(self, 
+                   conversation_id: str,
+                   role: str,
+                   content: str,
+                   metadata: Dict = None):
+        """
+        Adiciona mensagem ao histórico de conversa.
+        
+        Args:
+            conversation_id: ID único da conversa
+            role: "user" ou "assistant"
+            content: Conteúdo da mensagem
+            metadata: Dados adicionais (ex: similarity scores)
+        """
+        if conversation_id not in self.conversations:
+            self.conversations[conversation_id] = {
+                "messages": deque(maxlen=self.max_messages),
+                "created_at": datetime.now(),
+                "last_updated": datetime.now(),
+                "metadata": {}
+            }
+        
+        message = {
+            "role": role,
+            "content": content,
+            "timestamp": datetime.now().isoformat(),
+            "metadata": metadata or {}
+        }
+        
+        self.conversations[conversation_id]["messages"].append(message)
+        self.conversations[conversation_id]["last_updated"] = datetime.now()
+        
+        logger.info(f"Mensagem adicionada à conversa {conversation_id}")
+    
+    def get_context(self, 
+                   conversation_id: str,
+                   max_messages: int = 10) -> str:
+        """
+        Retorna contexto formatado das últimas mensagens.
+        
+        Args:
+            conversation_id: ID da conversa
+            max_messages: Número de mensagens a retornar
+            
+        Returns:
+            String com contexto formatado
+        """
+        if conversation_id not in self.conversations:
+            return ""
+        
+        messages = list(self.conversations[conversation_id]["messages"])
+        messages = messages[-max_messages:]
+        
+        context = ""
+        for msg in messages:
+            role = "CLIENTE" if msg["role"] == "user" else "ASSISTENTE"
+            context += f"\n{role}: {msg['content']}"
+        
+        return context.strip()
+    
+    def get_conversation_summary(self, conversation_id: str) -> Dict[str, Any]:
+        """
+        Retorna resumo da conversa.
+        
+        Args:
+            conversation_id: ID da conversa
+            
+        Returns:
+            Dict com resumo e estatísticas
+        """
+        if conversation_id not in self.conversations:
+            return {}
+        
+        conv = self.conversations[conversation_id]
+        messages = list(conv["messages"])
+        
+        user_messages = [m for m in messages if m["role"] == "user"]
+        assistant_messages = [m for m in messages if m["role"] == "assistant"]
+        
+        return {
+            "conversation_id": conversation_id,
+            "total_messages": len(messages),
+            "user_messages": len(user_messages),
+            "assistant_messages": len(assistant_messages),
+            "created_at": conv["created_at"].isoformat(),
+            "last_updated": conv["last_updated"].isoformat(),
+            "duration": str(conv["last_updated"] - conv["created_at"]),
+            "user_input_avg_length": sum(len(m["content"]) for m in user_messages) / len(user_messages) if user_messages else 0
+        }
+    
+    def clear_old_conversations(self):
+        """Remove conversas expiradas"""
+        now = datetime.now()
+        expired = []
+        
+        for conv_id, conv_data in self.conversations.items():
+            age = now - conv_data["last_updated"]
+            if age > timedelta(hours=self.ttl_hours):
+                expired.append(conv_id)
+        
+        for conv_id in expired:
+            del self.conversations[conv_id]
+            logger.info(f"Conversa expirada removida: {conv_id}")
+    
+    def export_conversation(self, conversation_id: str) -> Dict[str, Any]:
+        """Exporta conversa para formato estruturado"""
+        if conversation_id not in self.conversations:
+            return {}
+        
+        return {
+            "conversation_id": conversation_id,
+            "messages": list(self.conversations[conversation_id]["messages"]),
+            "summary": self.get_conversation_summary(conversation_id)
+        }
+🌐 9. Media Handler para WhatsApp (media_handler.py)
+python
+import os
+import requests
+import shutil
+from typing import Optional, Tuple
+import logging
+from pathlib import Path
+
+from config import settings
+from audio_processor import AudioProcessor
+from image_processor import ImageProcessor
+
+logger = logging.getLogger(__name__)
+
+class WhatsAppMediaHandler:
+    """
+    Gerencia download, processamento e upload de mídia via WhatsApp.
+    Suporta imagens, áudios e documentos.
+    """
+    
+    def __init__(self):
+        """Inicializa handlers"""
+        os.makedirs(settings.MEDIA_STORAGE_PATH, exist_ok=True)
+        self.audio_processor = AudioProcessor()
+        self.image_processor = ImageProcessor()
+    
+    def download_media(self, 
+                      media_url: str,
+                      media_type: str,
+                      media_id: str) -> Optional[str]:
+        """
+        Baixa arquivo de mídia do WhatsApp.
+        
+        Args:
+            media_url: URL de download
+            media_type: Tipo (image, audio, video, document)
+            media_id: ID único da mídia
+            
+        Returns:
+            Caminho local do arquivo ou None
+        """
+        try:
+            # Definir extensão baseado no tipo
+            extensions = {
+                "image": "jpg",
+                "audio": "ogg",
+                "video": "mp4",
+                "document": "pdf"
+            }
+            
+            ext = extensions.get(media_type, "bin")
+            file_path = os.path.join(
+                settings.MEDIA_STORAGE_PATH,
+                f"{media_id}.{ext}"
+            )
+            
+            # Download com timeout
+            response = requests.get(media_url, timeout=30, stream=True)
+            response.raise_for_status()
+            
+            with open(file_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+            
+            logger.info(f"Mídia baixada: {file_path}")
+            return file_path
+        
+        except Exception as e:
+            logger.error(f"Erro ao baixar mídia: {str(e)}")
+            return None
+    
+    def process_image(self, image_path: str, description: str = "") -> Dict[str, Any]:
+        """
+        Processa imagem para RAG.
+        
+        Args:
+            image_path: Caminho da imagem
+            description: Descrição do usuário
+            
+        Returns:
+            Dict com conteúdo processado
+        """
+        try:
+            # Validar
+            valid, error = self.image_processor.validate_image_file(image_path)
+            if not valid:
+                return {"error": f"Imagem inválida: {error}"}
+            
+            # Redimensionar se necessário
+            resized_path = self.image_processor.resize_image(image_path)
+            
+            # Extrair contexto
+            context = self.image_processor.create_image_context(
+                resized_path,
+                description
+            )
+            
+            return {
+                "processed_path": resized_path,
+                "context": context,
+                "type": "image"
+            }
+        
+        except Exception as e:
+            logger.error(f"Erro ao processar imagem: {str(e)}")
+            return {"error": str(e)}
+    
+    def process_audio(self, audio_path: str) -> Dict[str, Any]:
+        """
+        Processa áudio para RAG.
+        
+        Args:
+            audio_path: Caminho do arquivo de áudio
+            
+        Returns:
+            Dict com transcrição e contexto
+        """
+        try:
+            # Validar
+            valid, error = self.audio_processor.validate_audio_file(audio_path)
+            if not valid:
+                return {"error": f"Áudio inválido: {error}"}
+            
+            # Transcrever
+            transcription = self.audio_processor.transcribe(audio_path)
+            
+            # Criar contexto aumentado
+            context = self.audio_processor.create_audio_context(audio_path)
+            
+            return {
+                "transcription": transcription["full_transcription"],
+                "context": context,
+                "duration": transcription["duration_seconds"],
+                "language": transcription["language_detected"],
+                "type": "audio"
+            }
+        
+        except Exception as e:
+            logger.error(f"Erro ao processar áudio: {str(e)}")
+            return {"error": str(e)}
+    
+    def cleanup_old_files(self, hours: int = 24):
+        """Remove arquivos de mídia antigos"""
+        try:
+            import time
+            cutoff_time = time.time() - (hours * 3600)
+            
+            for file in os.listdir(settings.MEDIA_STORAGE_PATH):
+                file_path = os.path.join(settings.MEDIA_STORAGE_PATH, file)
+                if os.path.isfile(file_path):
+                    if os.path.getctime(file_path) < cutoff_time:
+                        os.remove(file_path)
+                        logger.info(f"Arquivo antigo removido: {file}")
+        
+        except Exception as e:
+            logger.error(f"Erro ao limpar arquivos antigos: {str(e)}")
+🚀 10. FastAPI Main Application (api/main.py)
+python
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, BackgroundTasks
+from fastapi.responses import JSONResponse
+import logging
+import os
+from typing import Optional
+
+from config import settings
+from rag.query_engine import RAGQueryEngine
+from rag.vector_store import VectorStoreManager
+from whatsapp.media_handler import WhatsAppMediaHandler
+from storage.database import Database
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+app = FastAPI(
+    title="RAG Sales AI - Renato Tanner",
+    description="Professional RAG system for smartphone sales",
+    version="1.0.0"
+)
+
+# Inicializar componentes
+query_engine = RAGQueryEngine()
+vector_store = VectorStoreManager()
+media_handler = WhatsAppMediaHandler()
+db = Database()
+
+@app.on_event("startup")
+async def startup_event():
+    """Inicializações ao start"""
+    logger.info("🚀 Iniciando RAG Sales AI")
+    logger.info(f"Modelo LLM: {settings.GROQ_MODEL}")
+    logger.info(f"ChromaDB: {settings.CHROMA_COLLECTION_NAME}")
+    stats = vector_store.get_collection_stats()
+    logger.info(f"Documentos no vector store: {stats['total_documents']}")
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    return {
+        "status": "healthy",
+        "service": "RAG Sales AI",
+        "model": settings.GROQ_MODEL,
+        "vector_store": settings.CHROMA_COLLECTION_NAME
+    }
+
+@app.post("/query")
+async def process_query(
+    query: str = Form(...),
+    conversation_id: str = Form(...),
+    image: Optional[UploadFile] = File(None),
+    audio: Optional[UploadFile] = File(None)
+):
+    """
+    Processa query com possível mídia multimodal.
+    
+    Args:
+        query: Pergunta do usuário
+        conversation_id: ID da conversa
+        image: Arquivo de imagem (opcional)
+        audio: Arquivo de áudio (opcional)
+    """
+    try:
+        context_type = "text"
+        image_path = None
+        
+        # Processar image se fornecida
+        if image:
+            image_data = await image.read()
+            temp_path = os.path.join(settings.MEDIA_STORAGE_PATH, image.filename)
+            with open(temp_path, 'wb') as f:
+                f.write(image_data)
+            
+            processed = media_handler.process_image(temp_path, query)
+            if "error" not in processed:
+                image_path = processed["processed_path"]
+                context_type = "hybrid"
+        
+        # Processar áudio se fornecido
+        if audio:
+            audio_data = await audio.read()
+            temp_path = os.path.join(settings.MEDIA_STORAGE_PATH, audio.filename)
+            with open(temp_path, 'wb') as f:
+                f.write(audio_data)
+            
+            processed = media_handler.process_audio(temp_path)
+            if "error" not in processed:
+                query = f"{query}\n\nTRANSCRIÇÃO DE ÁUDIO:\n{processed['transcription']}"
+        
+        # Executar query
+        result = query_engine.query(
+            user_query=query,
+            conversation_id=conversation_id,
+            context_type=context_type,
+            image_path=image_path,
+            include_memory=True
+        )
+        
+        return JSONResponse({
+            "status": "success",
+            "answer": result["answer"],
+            "sources": result["sources"],
+            "model": result["model_used"],
+            "retrieved_docs": result["retrieved_docs_count"]
+        })
+    
+    except Exception as e:
+        logger.error(f"Erro no query endpoint: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/upload-documents")
+async def upload_documents(
+    documents: list[UploadFile] = File(...),
+    doc_type: str = Form("text")
+):
+    """
+    Faz upload de múltiplos documentos para indexação.
+    
+    Args:
+        documents: Lista de arquivos
+        doc_type: Tipo de documento
+    """
+    try:
+        results = []
+        
+        for doc in documents:
+            content = await doc.read()
+            text_content = content.decode('utf-8')
+            
+            # Adicionar ao vector store
+            metadata = {
+                "source": doc.filename,
+                "type": doc_type,
+                "file_size": len(content)
+            }
+            
+            doc_id = vector_store.add_documents(
+                documents=[text_content],
+                metadatas=[metadata],
+                doc_type=doc_type
+            )
+            
+            results.append({
+                "filename": doc.filename,
+                "id": doc_id[0] if doc_id else None,
+                "status": "success"
+            })
+        
+        return JSONResponse({
+            "status": "success",
+            "uploaded": len(results),
+            "results": results
+        })
+    
+    except Exception as e:
+        logger.error(f"Erro no upload: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/conversation/{conversation_id}/summary")
+async def get_conversation_summary(conversation_id: str):
+    """Retorna resumo de conversa"""
+    try:
+        summary = query_engine.conversation_memory.get_conversation_summary(
+            conversation_id
+        )
+        
+        if not summary:
+            raise HTTPException(status_code=404, detail="Conversa não encontrada")
+        
+        return JSONResponse(summary)
+    
+    except Exception as e:
+        logger.error(f"Erro ao buscar resumo: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/vector-store/stats")
+async def get_vector_store_stats():
+    """Retorna estatísticas do vector store"""
+    try:
+        stats = vector_store.get_collection_stats()
+        return JSONResponse(stats)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/cleanup")
+async def cleanup_media(background_tasks: BackgroundTasks):
+    """Remove mídia antiga em background"""
+    background_tasks.add_task(media_handler.cleanup_old_files)
+    query_engine.conversation_memory.clear_old_conversations()
+    
+    return JSONResponse({
+        "status": "cleanup iniciado",
+        "message": "Limpeza de mídia antiga em progresso"
+    })
+⚙️ 11. Integração com WhatsApp Bot (ai_agent_whatsapp.py - ATUALIZADO)
+python
+import asyncio
+import logging
+from typing import Dict, Any, Optional
+import aiohttp
+import json
+
+from config import settings
+from rag.query_engine import RAGQueryEngine
+from whatsapp.media_handler import WhatsAppMediaHandler
+from storage.database import Database
+
+logger = logging.getLogger(__name__)
+
+class WhatsAppRAGAgent:
+    """
+    Agente de IA integrado com WhatsApp e RAG.
+    Processa mensagens, mídia e mantém contexto de conversa.
+    """
+    
+    def __init__(self):
+        """Inicializa agente"""
+        self.query_engine = RAGQueryEngine()
+        self.media_handler = WhatsAppMediaHandler()
+        self.db = Database()
+        self.wppconnect_url = settings.WPPCONNECT_URL
+    
+    async def process_message(self, 
+                             message: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Processa mensagem do WhatsApp.
+        
+        Args:
+            message: Dict com dados da mensagem
+            
+        Returns:
+            Response estruturada
+        """
+        try:
+            chat_id = message.get("from")
+            text = message.get("body", "")
+            media_type = message.get("type")
+            media_data = message.get("media", {})
+            
+            logger.info(f"Processando mensagem de {chat_id}: {text[:50]}")
+            
+            # Preparar contexto de conversa
+            conversation_id = self._get_conversation_id(chat_id)
+            
+            # Processar mídia se houver
+            media_context = None
+            if media_type in ["image", "audio", "video"]:
+                media_context = await self._handle_media(
+                    media_type,
+                    media_data,
+                    text
+                )
+            
+            # Executar query RAG
+            query_text = text
+            if media_context and "context" in media_context:
+                query_text = f"{text}\n\n[CONTEXTO DE MÍDIA]\n{media_context['context']}"
+            
+            result = self.query_engine.query(
+                user_query=query_text,
+                conversation_id=conversation_id,
+                context_type="hybrid" if media_context else "text",
+                include_memory=True
+            )
+            
+            # Preparar resposta formatada
+            response = self._format_whatsapp_response(result, chat_id)
+            
+            # Salvar interação no DB
+            await self._save_interaction(chat_id, text, result["answer"], media_type)
+            
+            return response
+        
+        except Exception as e:
+            logger.error(f"Erro ao processar mensagem: {str(e)}")
+            return {
+                "to": message.get("from"),
+                "message": f"Desculpe, ocorreu um erro. Por favor, tente novamente."
+            }
+    
+    async def _handle_media(self, 
+                           media_type: str,
+                           media_data: Dict,
+                           user_text: str) -> Optional[Dict]:
+        """Processa mídia anexada"""
+        try:
+            media_url = media_data.get("url")
+            media_id = media_data.get("id")
+            
+            if not media_url:
+                return None
+            
+            # Download da mídia
+            file_path = self.media_handler.download_media(
+                media_url,
+                media_type,
+                media_id
+            )
+            
+            if not file_path:
+                return None
+            
+            # Processar baseado no tipo
+            if media_type == "image":
+                return self.media_handler.process_image(file_path, user_text)
+            elif media_type == "audio":
+                return self.media_handler.process_audio(file_path)
+            
+            return None
+        
+        except Exception as e:
+            logger.error(f"Erro ao processar mídia: {str(e)}")
+            return None
+    
+    def _format_whatsapp_response(self, 
+                                 result: Dict[str, Any],
+                                 chat_id: str) -> Dict[str, Any]:
+        """Formata resposta para WhatsApp"""
+        answer = result["answer"]
+        
+        # Limitar tamanho para WhatsApp (4096 caracteres)
+        if len(answer) > 4000:
+            answer = answer[:3900] + "\n\n[mensagem truncada]"
+        
+        # Adicionar contexto de fontes se relevante
+        if result["sources"]:
+            sources_text = "\n\n📚 *Fontes consultadas:*\n"
+            for i, source in enumerate(result["sources"][:2], 1):
+                similarity = source["similarity"]
+                sources_text += f"{i}. (confiança: {similarity:.0%})\n"
+            
+            if len(answer) + len(sources_text) <= 4000:
+                answer += sources_text
+        
+        return {
+            "to": chat_id,
+            "message": answer,
+            "mentions": []
+        }
+    
+    def _get_conversation_id(self, chat_id: str) -> str:
+        """Converte chat_id do WhatsApp para conversation_id"""
+        return f"wa_{chat_id.replace('@', '_')}"
+    
+    async def _save_interaction(self,
+                               chat_id: str,
+                               user_message: str,
+                               bot_response: str,
+                               media_type: Optional[str] = None):
+        """Salva interação no banco de dados"""
+        try:
+            await self.db.save_interaction(
+                chat_id=chat_id,
+                user_message=user_message,
+                bot_response=bot_response,
+                media_type=media_type
+            )
+        except Exception as e:
+            logger.error(f"Erro ao salvar interação: {str(e)}")
+    
+    async def send_whatsapp_message(self, 
+                                   chat_id: str,
+                                   message: str) -> bool:
+        """Envia mensagem via WPPConnect"""
+        try:
+            async with aiohttp.ClientSession() as session:
+                payload = {
+                    "phone": chat_id,
+                    "message": message,
+                    "session": settings.WPPCONNECT_SESSION
+                }
+                
+                async with session.post(
+                    f"{self.wppconnect_url}/api/sendMessage",
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=10)
+                ) as resp:
+                    if resp.status == 200:
+                        logger.info(f"Mensagem enviada para {chat_id}")
+                        return True
+                    else:
+                        logger.error(f"Erro ao enviar: {resp.status}")
+                        return False
+        
+        except Exception as e:
+            logger.error(f"Erro ao enviar mensagem WhatsApp: {str(e)}")
+            return False
+
+# Instância global
+agent = WhatsAppRAGAgent()
+
+async def handle_incoming_message(message_data: Dict[str, Any]):
+    """Handler para mensagens recebidas"""
+    response = await agent.process_message(message_data)
+    
+    # Enviar resposta
+    if response:
+        await agent.send_whatsapp_message(
+            response["to"],
+            response["message"]
+        )
+🗄️ 12. Database Manager (storage/database.py - ATUALIZADO)
+python
+from sqlalchemy import create_engine, Column, String, DateTime, Text, Integer
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, Session
+from datetime import datetime
+import logging
+
+from config import settings
+
+logger = logging.getLogger(__name__)
+Base = declarative_base()
+
+class ChatInteraction(Base):
+    """Model para armazenar interações"""
+    __tablename__ = "chat_interactions"
+    
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(String(255), index=True)
+    user_message = Column(Text)
+    bot_response = Column(Text)
+    media_type = Column(String(50), nullable=True)
+    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
+
+class Database:
+    """Gerenciador de banco de dados"""
+    
+    def __init__(self):
+        """Inicializa conexão"""
+        self.engine = create_engine(
+            settings.DATABASE_URL,
+            pool_size=settings.SQLALCHEMY_POOL_SIZE,
+            max_overflow=settings.SQLALCHEMY_MAX_OVERFLOW
+        )
+        
+        Base.metadata.create_all(self.engine)
+        self.SessionLocal = sessionmaker(bind=self.engine)
+        logger.info("Database initialized")
+    
+    async def save_interaction(self,
+                              chat_id: str,
+                              user_message: str,
+                              bot_response: str,
+                              media_type: str = None):
+        """Salva interação"""
+        session = self.SessionLocal()
+        try:
+            interaction = ChatInteraction(
+                chat_id=chat_id,
+                user_message=user_message,
+                bot_response=bot_response,
+                media_type=media_type
+            )
+            session.add(interaction)
+            session.commit()
+            logger.info(f"Interação salva para {chat_id}")
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Erro ao salvar: {str(e)}")
+        finally:
+            session.close()
+📋 13. Environment (.env)
+text
+# Environment
+ENV=production
+DEBUG=false
+
+# Groq LLM
+GROQ_API_KEY=seu_groq_api_key_aqui
+GROQ_MODEL=llama-3.1-70b-versatile
+
+# Database PostgreSQL
+DATABASE_URL=postgresql://usuario:senha@localhost:5432/renato_smartphones
+
+# ChromaDB
+CHROMA_COLLECTION_NAME=renato_smartphones
+CHROMA_PERSIST_DIR=./data/chroma_db
+
+# WhatsApp WPPConnect
+WPPCONNECT_URL=http://localhost:3000
+WPPCONNECT_SESSION=renato_whatsapp
+
+# Whisper
+WHISPER_MODEL=base
+
+# RAG Parameters
+CHUNK_SIZE=512
+CHUNK_OVERLAP=100
+TOP_K_RETRIEVAL=5
+RELEVANCE_THRESHOLD=0.6
+
+# Media Storage
+MAX_FILE_SIZE_MB=50
+🚀 14. Docker Compose (docker-compose.yml)
+text
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: renato
+      POSTGRES_PASSWORD: secure_password_here
+      POSTGRES_DB: renato_smartphones
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U renato"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  chroma:
+    image: ghcr.io/chroma-core/chroma:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma_data:/data
+    environment:
+      CHROMA_ENVIRONMENT: production
+
+  wppconnect:
+    image: wppconnect/server:latest
+    ports:
+      - "3000:3000"
+    volumes:
+      - wpp_sessions:/root/.wwebjs_auth
+    environment:
+      SESSION_NAME: renato_whatsapp
+
+  rag-api:
+    build: .
+    ports:
+      - "8001:8000"
+    depends_on:
+      - postgres
+      - chroma
+      - wppconnect
+    environment:
+      DATABASE_URL: postgresql://renato:secure_password_here@postgres:5432/renato_smartphones
+      CHROMA_URL: http://chroma:8000
+      WPPCONNECT_URL: http://wppconnect:3000
+    volumes:
+      - ./data:/app/data
+
+volumes:
+  postgres_data:
+  chroma_data:
+  wpp_sessions:
+📦 15. Script de Inicialização (init_rag.py)
+python
+"""
+Script para inicializar o RAG com dados de exemplo do Renato Tanner.
+Execute ANTES de colocar em produção.
+"""
+
+import logging
+from datetime import datetime
+from rag.vector_store import VectorStoreManager
+from rag.document_processors import DocumentProcessor
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+def initialize_rag_with_sample_data():
+    """Inicializa RAG com dados de exemplo"""
+    
+    vector_store = VectorStoreManager()
+    
+    logger.info("🚀 Inicializando RAG para Renato Tanner")
+    
+    # 1. Adicionar produtos de exemplo
+    logger.info("📱 Adicionando catálogo de smartphones...")
+    
+    sample_products = [
+        {
+            "id": "samsung_s24",
+            "name": "Samsung Galaxy S24 Ultra",
+            "model": "SM-S928B",
+            "brand": "Samsung",
+            "display": "6.8\" AMOLED 120Hz",
+            "processor": "Snapdragon 8 Gen 3",
+            "ram": "12GB",
+            "storage": "256GB",
+            "main_camera": "200MP",
+            "front_camera": "40MP",
+            "battery": "5000mAh",
+            "os": "Android 14",
+            "price": 8999,
+            "stock": 15,
+            "description": "Flagship com câmera de 200MP e processador top.",
+            "highlights": "IA avançada, zoom 100x, design premium em titânio"
+        },
+        {
+            "id": "iphone_15",
+            "name": "iPhone 15 Pro Max",
+            "model": "A3286",
+            "brand": "Apple",
+            "display": "6.7\" Super Retina XDR",
+            "processor": "A17 Pro",
+            "ram": "8GB",
+            "storage": "512GB",
+            "main_camera": "48MP",
+            "front_camera": "12MP",
+            "battery": "4685mAh",
+            "os": "iOS 17",
+            "price": 11999,
+            "stock": 8,
+            "description": "Premium Apple com IA generativa nativa.",
+            "highlights": "Titânio, Action button, Prores recording"
+        },
+        {
+            "id": "xiaomi_14",
+            "name": "Xiaomi 14 Ultra",
+            "model": "23119RK5G",
+            "brand": "Xiaomi",
+            "display": "6.73\" AMOLED 120Hz",
+            "processor": "Snapdragon 8 Gen 3",
+            "ram": "16GB",
+            "storage": "512GB",
+            "main_camera": "50MP",
+            "front_camera": "32MP",
+            "battery": "5500mAh",
+            "os": "Android 14",
+            "price": 5999,
+            "stock": 22,
+            "description": "Flagship chinês com melhor custo-benefício.",
+            "highlights": "Câmeras Leica, carregamento 120W, design robusto"
+        }
+    ]
+    
+    docs = DocumentProcessor.process_product_catalog(sample_products)
+    
+    for doc in docs:
+        vector_store.add_documents(
+            documents=[doc["content"]],
+            metadatas=[doc["metadata"]]
+        )
+    
+    logger.info(f"✅ {len(docs)} produtos adicionados")
+    
+    # 2. Adicionar informações sobre Renato Tanner
+    logger.info("👨‍💼 Adicionando contexto de vendedor...")
+    
+    seller_context = """
+    PERFIL DO VENDEDOR: Renato Tanner
+    
+    Especialista em smartphones com 5 anos de experiência.
+    Conhecimento profundo em especificações técnicas, tendências de mercado e necessidades de clientes.
+    
+    SERVIÇOS OFERECIDOS:
+    - Consultoria técnica gratuita
+    - Comparação entre modelos
+    - Recomendação personalizada baseada em uso
+    - Garantia estendida
+    - Programa de fidelidade
+    - Trade-in de equipamentos antigos
+    
+    GARANTIA: Todos os produtos vêm com 1 ano de garantia
+    ENTREGA: Em São Paulo (capital) em 24h
+    FORMAS DE PAGAMENTO: Dinheiro, PIX, débito, crédito (até 12x)
+    """
+    
+    vector_store.add_documents(
+        documents=[seller_context],
+        metadatas=[{
+            "type": "seller_info",
+            "name": "Renato Tanner",
+            "created_at": datetime.now().isoformat()
+        }]
+    )
+    
+    # 3. Adicionar FAQ comum
+    logger.info("❓ Adicionando FAQ...")
+    
+    faq = """
+    P: Qual é o melhor smartphone em 2024?
+    R: Depende do uso. Para fotografia profissional: iPhone ou Samsung. Para gaming: Xiaomi ou Realme. Para custo-benefício: Xiaomi.
+    
+    P: Como escolher entre Samsung e iPhone?
+    R: Samsung oferece mais customização com Android. iPhone melhor para ecossistema Apple e atualizações prolongadas.
+    
+    P: Qual tem a melhor câmera?
+    R: iPhone 15 Pro Max e Samsung S24 Ultra têm as melhores câmeras do mercado.
+    
+    P: Aceita trade-in?
+    R: Sim! Aceitamos smartphones em qualquer condição. Faça uma cotação.
+    """
+    
+    vector_store.add_documents(
+        documents=[faq],
+        metadatas=[{
+            "type": "faq",
+            "created_at": datetime.now().isoformat()
+        }]
+    )
+    
+    # 4. Estatísticas finais
+    stats = vector_store.get_collection_stats()
+    logger.info(f"✅ RAG inicializado com sucesso!")
+    logger.info(f"📊 Total de documentos: {stats['total_documents']}")
+    logger.info(f"🎯 Dimensão de embeddings: {stats['embedding_dimension']}")
+
+if __name__ == "__main__":
+    initialize_rag_with_sample_data()
+🎯 RESUMO EXECUTIVO - Como Usar
+Passo 1: Setup Inicial
+bash
+# Clonar projeto
+git clone <seu-repo>
+cd chatwhatsapp-rag
+
+# Criar venv
+python -m venv venv
+source venv/bin/activate  # Linux/Mac
+# ou
+venv\Scripts\activate  # Windows
+
+# Instalar dependências
+pip install -r requirements.txt
+
+# Configurar .env
+cp .env.example .env
+# Editar com suas chaves de API
+Passo 2: Docker & Services
+bash
+# Subir PostgreSQL + ChromaDB + WPPConnect
+docker-compose up -d
+
+# Inicializar banco de dados
+python init_rag.py
+
+# Testar conexão
+curl http://localhost:8001/health
+Passo 3: Executar o Bot
+bash
+# Terminal 1: Iniciar FastAPI
+uvicorn api.main:app --reload --port 8001
+
+# Terminal 2: WPPConnect (já em Docker)
+# Escanear QR code no terminal
+
+# Terminal 3: Webhook listener (opcional)
+python whatsapp/webhook_listener.py
+Passo 4: Testar RAG
+bash
+# Query simples
+curl -X POST "http://localhost:8001/query" \
+  -F "query=Qual é o melhor smartphone para fotografia?" \
+  -F "conversation_id=test_001"
+
+# Query com imagem
+curl -X POST "http://localhost:8001/query" \
+  -F "query=Essa camera é boa?" \
+  -F "conversation_id=test_001" \
+  -F "image=@foto_telefone.jpg"
+
+# Query com áudio (selfi do cliente gravando voz)
+curl -X POST "http://localhost:8001/query" \
+  -F "query=Ouça o que preciso" \
+  -F "conversation_id=test_001" \
+  -F "audio=@pergunta_audio.m4a"
+🎓 DIDÁTICA - Explicação de Conceitos
+O que é RAG?
+RAG = Retrieval-Augmented Generation. Em vez de apenas usar a memória do LLM (que é limitada), você recupera documentos relevantes antes de fazer a pergunta. Assim:
+
+Usuário pergunta: "Qual é o melhor smartphone?"
+
+Retrieval: Sistema busca no ChromaDB produtos relevantes
+
+Augment: Adiciona esses produtos ao contexto da LLM
+
+Generation: Groq LLM gera resposta usando contexto completo
+
+Por que Multimodal?
+Porque um vendedor de smartphones real precisa:
+
+Texto: Especificações e descrições
+
+Imagens: Fotos do produto, comparações visuais
+
+Áudio: Clientes enviam áudios com dúvidas
+
+Seu sistema entende TUDO isso.
+
+Arquitetura Camadas
+text
+[WhatsApp] 
+   ↓
+[WPPConnect JS Bridge]
+   ↓
+[FastAPI Router]
+   ↓
+[Media Handler] → [Audio Processor] + [Image Processor]
+   ↓
+[Query Engine] → [Conversation Memory]
+   ↓
+[Vector Store Manager] → [ChromaDB]
+   ↓
+[Embedding Manager] → [Sentence Transformers + CLIP]
+   ↓
+[LLM Groq] → Resposta ao cliente
+🔒 Boas Práticas para Produção
+Segurança: Use variáveis de ambiente, nunca hardcode API keys
+
+Rate Limiting: Implemente throttling para evitar abuso
+
+Logging: Monitore tudo com ELK stack ou similar
+
+Backup: Faça backup do ChromaDB regularmente
+
+Testing: Teste queries antes de ir ao vivo
+
+Versionamento: Controle de mudanças nos docs
+
+Analytics: Rastreie queries, respostas e satisfação
+
+Este é um RAG enterprise-grade profissional pronto para o Renato começar a vender smartphones com IA inteligente! 🚀
+
+ Por Que PostgreSQL + ChromaDB? E Como Trazer Dados Reais dos Aparelhos
+Excelente pergunta! Vou explicar isso de forma que você entenda profundamente. Deixa eu desenhar a diferença:
+
+🤔 Por Que NÃO Usar Só ChromaDB?
+Cenário 1: Só ChromaDB (INADEQUADO)
+text
+Cliente pergunta: "Qual é o iPhone 15 mais barato em São Paulo?"
+    ↓
+ChromaDB busca: "iPhone 15"
+    ↓
+Retorna: "iPhone 15 Pro Max - Ótima câmera de 48MP..."
+    ↓
+Mas COMO SABE O PREÇO EM SÃO PAULO?
+Não sabe! ChromaDB armazena TEXTO/VETORES, não NÚMEROS ESTRUTURADOS
+Cenário 2: PostgreSQL + ChromaDB (CORRETO)
+text
+Cliente pergunta: "Qual é o iPhone 15 mais barato em São Paulo?"
+    ↓
+ChromaDB busca: "iPhone 15" (BUSCA SEMÂNTICA)
+    ↓
+Retorna: IDs dos documentos relevantes
+    ↓
+PostgreSQL consulta: SELECT * WHERE modelo='iPhone 15' AND regiao='São Paulo'
+    ↓
+Retorna: 
+- Modelo: iPhone 15 Pro Max
+- Preço: R$ 11.999
+- Estoque em SP: 12 unidades
+- Promoção ativa: Desconto de 5%
+- Preço final: R$ 11.399
+    ↓
+Bot responde com dados PRECISOS e ATUALIZADOS
+📊 Comparação: PostgreSQL vs ChromaDB
+Aspecto	PostgreSQL	ChromaDB	O que Usar?
+Dados	Estruturados (números, datas)	Vetores + Texto	PostgreSQL
+Busca	Exata/Condicional (WHERE)	Semântica (similaridade)	ChromaDB
+Preço	R$ 11.999	"smartphone caro e premium"	PostgreSQL
+Estoque	12 unidades	"tem disponível"	PostgreSQL
+Busca: "iPhone melhor para foto"	❌ Não encontra	✅ Encontra	ChromaDB
+Busca: "Preço < 5000"	✅ Encontra	❌ Não encontra	PostgreSQL
+Atualização	Rápida (< 1ms)	Lenta (precisa re-embedar)	PostgreSQL
+Transações	✅ ACID (seguro)	❌ Não (básico)	PostgreSQL
+🏗️ Arquitetura: Como Funciona Junto
+text
+┌──────────────────────────────────────────────────────────────┐
+│                    CLIENTE ENVIA PERGUNTA                     │
+│          "Qual smartphone é bom para fotografar?"             │
+└────────────────────────┬─────────────────────────────────────┘
+                         │
+        ┌────────────────┴────────────────┐
+        │                                 │
+        ▼                                 ▼
+   ┌─────────────┐              ┌──────────────────┐
+   │  ChromaDB   │              │   PostgreSQL     │
+   │ (Semântica) │              │  (Dados Reais)   │
+   └──────┬──────┘              └────────┬─────────┘
+          │                              │
+          │ Busca: "fotografia"          │
+          │ Retorna: IDs dos produtos    │
+          │ similarity: 89%, 76%, 65%    │
+          │                              │
+          │ IDs: [3, 1, 5]              │ Busca: SELECT * WHERE id IN (3,1,5)
+          │                              │ AND estoque > 0
+          │                              │ Retorna: dados completos
+          │                              │ - Preço
+          │                              │ - Estoque
+          │                              │ - Promoção
+          └────────────────┬─────────────┘
+                           │
+                           ▼
+            ┌──────────────────────────────┐
+            │  Groq LLM (Inteligência)     │
+            │  "Recomendo Samsung S24 Ultra│
+            │  porque tem câmera de 200MP  │
+            │  (dados do ChromaDB) que     │
+            │  custa R$ 8.999 em estoque  │
+            │  (dados do PostgreSQL)"      │
+            └──────────────┬───────────────┘
+                           │
+                           ▼
+            ┌──────────────────────────────┐
+            │   RESPOSTA FINAL AO CLIENTE  │
+            └──────────────────────────────┘
+🔄 Fluxo Real: Passo a Passo
+python
+# PASSO 1: Cliente pergunta
+pergunta = "Qual smartphone é melhor para fotografar e qual é o preço em SP?"
+
+# PASSO 2: ChromaDB busca semântica
+chromadb_results = chromadb.search(pergunta)
+# Retorna: 
+# [
+#   {"id": 3, "similarity": 0.89, "documento": "Samsung S24 Ultra..."},
+#   {"id": 1, "similarity": 0.76, "documento": "iPhone 15 Pro..."},
+#   {"id": 5, "similarity": 0.65, "documento": "Xiaomi 14 Ultra..."}
+# ]
+
+# PASSO 3: Extrair IDs relevantes
+produto_ids = [3, 1, 5]
+
+# PASSO 4: PostgreSQL busca dados REAIS
+query = """
+SELECT 
+    p.id, p.modelo, p.preco_base, p.camera_principal_mp,
+    i.quantidade_disponivel,
+    pr.desconto_percentual, pr.preco_promocional
+FROM produtos p
+LEFT JOIN inventario i ON p.id = i.produto_id
+LEFT JOIN promocoes pr ON p.id = pr.produto_id
+WHERE p.id IN (3, 1, 5)
+  AND p.preco_base < 15000  -- Filtro do usuário
+  AND i.quantidade_disponivel > 0
+  AND (pr.data_fim IS NULL OR pr.data_fim > NOW())
+ORDER BY p.camera_principal_mp DESC
+"""
+
+# Retorna dados ESTRUTURADOS:
+postgres_results = [
+    {
+        "id": 3,
+        "modelo": "Samsung Galaxy S24 Ultra",
+        "preco_base": 8999,
+        "camera_mp": 200,
+        "estoque": 15,
+        "promocao": "5% de desconto"
+    },
+    {
+        "id": 1,
+        "modelo": "iPhone 15 Pro Max",
+        "preco_base": 11999,
+        "camera_mp": 48,
+        "estoque": 8,
+        "promocao": None
+    }
+]
+
+# PASSO 5: Groq LLM monta resposta contextualizada
+prompt = f"""
+Baseado nos seguintes dados:
+
+PRODUTOS ENCONTRADOS:
+{postgres_results}
+
+CONTEXTO DO CHROMADB (RELEVÂNCIA):
+- Samsung S24 Ultra: 89% relevante para fotografia
+- iPhone 15 Pro Max: 76% relevante para fotografia
+
+Pergunta do cliente: {pergunta}
+
+Recomende o melhor produto com justificativa e preço.
+"""
+
+# Groq retorna:
+resposta = """
+Recomendo o Samsung Galaxy S24 Ultra! 📱
+
+Por quê?
+✅ Câmera de 200MP (melhor resolução)
+✅ Zoom óptico 100x (perfeito para fotografia à distância)
+✅ Processamento computacional avançado
+✅ Preço: R$ 8.999 (com 5% de desconto = R$ 8.549)
+✅ 15 unidades em estoque
+"""
+🎯 Quando Usar PostgreSQL vs ChromaDB
+Situação	Usar
+"Qual smartphone é melhor?"	ChromaDB
+"Quanto custa o iPhone?"	PostgreSQL
+"Qual tem câmera melhor?"	PostgreSQL (specs técnicas)
+"Qual tema de aparelho você recomenda?"	ChromaDB
+"Qual modelo tem estoque em SP?"	PostgreSQL
+"Comparar Samsung vs iPhone para foto"	AMBOS
+"Produtos com desconto ativo"	PostgreSQL
+"Busca semântica: 'bom custo-benefício'"	ChromaDB
+💾 Estrutura de Dados Prática: O Que Guardar Onde
+ChromaDB Guarda:
+text
+"Samsung Galaxy S24 Ultra é um smartphone premium com câmera de 200MP 
+perfeito para fotografia profissional. Tem Snapdragon 8 Gen 3, 12GB de RAM, 
+tela AMOLED de 6.8 polegadas. Melhor em zoom e resolução. Marca confiável 
+com excelente desempenho."
+
+EMBEDDING VETORIAL:
+[0.234, -0.512, 0.891, ..., 0.123]  ← 384 números
+PostgreSQL Guarda:
+sql
+┌─ ID: 2
+├─ modelo: "Samsung Galaxy S24 Ultra"
+├─ fabricante_id: 2
+├─ preco_base: 8999.00
+├─ tela_tamanho: 6.8
+├─ tela_tipo: "Dynamic AMOLED"
+├─ camera_principal_mp: 200
+├─ camera_frontal_mp: 32
+├─ bateria_mah: 5000
+├─ processador: "Snapdragon 8 Gen 3"
+├─ data_lancamento: "2024-01-29"
+├─ categoria: "premium"
+├─ segmento: "flagship"
+└─ ativo: true
+📱 COMO TRAZER DADOS REAIS DOS APARELHOS
+Ótima pergunta! Existem 4 formas (em ordem de praticidade):
+
+FORMA 1: API de Especificações (MAIS PROFISSIONAL)
+Existem APIs públicas que retornam dados de aparelhos:
+
+python
+import requests
+import json
+
+class PhoneSpecsExtractor:
+    """
+    Extrai especificações reais de aparelhos via APIs públicas
+    """
+    
+    # API 1: GSMArena (não oficial, mas funciona)
+    def get_specs_from_gsmarena(self, model_name: str) -> dict:
+        """
+        Extrai specs do GSMArena (maior base de dados de phones)
+        
+        Exemplo: "Samsung Galaxy S24 Ultra"
+        Retorna: Todas as especificações técnicas reais
+        """
+        # GSMArena URL pattern
+        base_url = "https://www.gsmarena.com"
+        
+        # Você precisaria fazer web scraping ou usar uma API wrapper
+        # Exemplo de API wrapper gratuita:
+        
+        try:
+            # Usando API wrapper (gsmarena-api)
+            # pip install gsmarena-api
+            from gsmarena_api.client import PhoneClient
+            
+            client = PhoneClient()
+            phones = client.search(model_name)
+            
+            if phones:
+                phone = phones[0]
+                specs = client.get_phone_specs(phone)
+                
+                return {
+                    "modelo": specs.title,
+                    "fabricante": specs.brand,
+                    "preco_lancamento": specs.price,
+                    "tela": {
+                        "tamanho": specs.display_size,
+                        "tipo": specs.display_type,
+                        "resolucao": specs.display_resolution,
+                        "fps": specs.display_refresh_rate
+                    },
+                    "camera": {
+                        "principal": specs.main_camera,
+                        "frontal": specs.selfie_camera,
+                        "video": specs.video_recording
+                    },
+                    "processador": specs.processor,
+                    "ram": specs.ram,
+                    "armazenamento": specs.storage,
+                    "bateria": specs.battery_capacity,
+                    "so": specs.operating_system,
+                    "data_lancamento": specs.release_date,
+                    "dimensoes": specs.dimensions,
+                    "peso": specs.weight,
+                    "outros": specs.features
+                }
+        except Exception as e:
+            print(f"Erro ao extrair de GSMArena: {e}")
+            return None
+    
+    # API 2: RapidAPI - DeviceAtlas (Pago mas mais confiável)
+    def get_specs_from_rapidapi(self, model_name: str) -> dict:
+        """
+        Usa API paga do RapidAPI para dados 100% precisos
+        """
+        import requests
+        
+        # Você precisa se registrar em rapidapi.com
+        headers = {
+            "X-RapidAPI-Key": "sua_chave_aqui",
+            "X-RapidAPI-Host": "device-specs-api.p.rapidapi.com"
+        }
+        
+        try:
+            response = requests.get(
+                f"https://device-specs-api.p.rapidapi.com/device/{model_name}",
+                headers=headers
+            )
+            
+            if response.status_code == 200:
+                return response.json()
+        except Exception as e:
+            print(f"Erro na API: {e}")
+        
+        return None
+
+# Usar
+extractor = PhoneSpecsExtractor()
+
+# Tentar GSMArena primeiro (gratuito)
+specs = extractor.get_specs_from_gsmarena("Samsung Galaxy S24 Ultra")
+
+if specs:
+    print(f"✅ Especificações encontradas:")
+    print(f"  Câmera: {specs['camera']['principal']}")
+    print(f"  Bateria: {specs['bateria']}")
+    print(f"  Processador: {specs['processador']}")
+FORMA 2: Web Scraping (Gratuito, Moderado)
+python
+from bs4 import BeautifulSoup
+import requests
+import re
+
+class PhoneWebScraper:
+    """
+    Extrai dados de sites públicos de especificações
+    """
+    
+    def scrape_from_phonearena(self, model_name: str) -> dict:
+        """
+        Scrape de PhoneArena.com (legal, não bloqueado)
+        """
+        try:
+            # Exemplo: Samsung Galaxy S24 Ultra
+            search_url = f"https://www.phonearena.com/phones/search?phoneName={model_name}"
+            
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+            }
+            
+            response = requests.get(search_url, headers=headers, timeout=10)
+            response.raise_for_status()
+            
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # Extrair dados da página (varia conforme site)
+            specs = {
+                "modelo": self._extract_text(soup, "h1.phone-name"),
+                "camera_principal": self._extract_number(soup, "camera specs"),
+                "tela": self._extract_text(soup, "display size"),
+                "bateria": self._extract_number(soup, "battery"),
+                "processador": self._extract_text(soup, "processor"),
+            }
+            
+            return specs
+        
+        except Exception as e:
+            print(f"Erro no scraping: {e}")
+            return None
+    
+    def _extract_text(self, soup, selector) -> str:
+        """Helper para extrair texto"""
+        element = soup.select_one(selector)
+        return element.text.strip() if element else "N/A"
+    
+    def _extract_number(self, soup, text_pattern) -> str:
+        """Helper para extrair números"""
+        match = re.search(r'\d+', text_pattern)
+        return match.group(0) if match else "N/A"
+
+# Usar
+scraper = PhoneWebScraper()
+specs = scraper.scrape_from_phonearena("Samsung Galaxy S24 Ultra")
+FORMA 3: Dados Locais JSON (MAIS RÁPIDO PARA PROTOTIPO)
+python
+import json
+
+# Criar arquivo phones_database.json com todos os dados
+phones_data = {
+    "Samsung Galaxy S24 Ultra": {
+        "id": 1,
+        "fabricante": "Samsung",
+        "preco": 8999,
+        "lancamento": "2024-01-29",
+        "especificacoes": {
+            "display": {
+                "tamanho": 6.8,
+                "tipo": "Dynamic AMOLED",
+                "resolucao": "1440 x 3120",
+                "hz": 120
+            },
+            "camera": {
+                "principal": {
+                    "megapixels": 200,
+                    "abertura": "f/1.7",
+                    "sensor": "GN2",
+                    "zoom": "100x com IA"
+                },
+                "frontal": {
+                    "megapixels": 32,
+                    "abertura": "f/2.2"
+                },
+                "video": "8K a 30fps"
+            },
+            "processador": "Snapdragon 8 Gen 3",
+            "ram": 12,
+            "armazenamento": 256,
+            "bateria": {
+                "capacidade": 5000,
+                "carregamento": "45W",
+                "carregamento_wireless": "15W"
+            },
+            "so": "Android 14",
+            "dimensoes": "162.8 x 77.9 x 8.6 mm",
+            "peso": 232
+        },
+        "destaques": [
+            "Câmera de 200MP",
+            "Zoom óptico 100x",
+            "Processador flagship",
+            "Carregamento 45W"
+        ],
+        "categorias": ["premium", "fotografia", "performance"]
+    },
+    
+    "iPhone 15 Pro Max": {
+        "id": 2,
+        "fabricante": "Apple",
+        "preco": 11999,
+        "lancamento": "2023-09-22",
+        "especificacoes": {
+            "display": {
+                "tamanho": 6.7,
+                "tipo": "Super Retina XDR",
+                "resolucao": "1284 x 2796",
+                "hz": 120
+            },
+            "camera": {
+                "principal": {
+                    "megapixels": 48,
+                    "abertura": "f/1.78",
+                    "sensor": "48MP principal + 3 telefoto"
+                },
+                "frontal": {
+                    "megapixels": 12,
+                    "abertura": "f/1.9"
+                },
+                "video": "ProRes 4K"
+            },
+            "processador": "Apple A17 Pro",
+            "ram": 8,
+            "armazenamento": 256,
+            "bateria": {
+                "capacidade": 4685,
+                "carregamento": "20W",
+                "carregamento_wireless": "15W"
+            },
+            "so": "iOS 17",
+            "dimensoes": "160.9 x 77.8 x 8.25 mm",
+            "peso": 225
+        },
+        "destaques": [
+            "Chip A17 Pro",
+            "Câmeras profissionais",
+            "ProRes recording",
+            "Ação button"
+        ],
+        "categorias": ["premium", "fotografia", "profissional"]
+    },
+    
+    "Xiaomi 14 Ultra": {
+        "id": 3,
+        "fabricante": "Xiaomi",
+        "preco": 5999,
+        "lancamento": "2024-01-01",
+        "especificacoes": {
+            "display": {
+                "tamanho": 6.73,
+                "tipo": "AMOLED",
+                "resolucao": "1440 x 3200",
+                "hz": 120
+            },
+            "camera": {
+                "principal": {
+                    "megapixels": 50,
+                    "abertura": "f/1.6",
+                    "sensor": "Leica",
+                    "zoom": "óptico 3x"
+                },
+                "frontal": {
+                    "megapixels": 32,
+                    "abertura": "f/2.0"
+                },
+                "video": "4K 60fps"
+            },
+            "processador": "Snapdragon 8 Gen 3",
+            "ram": 16,
+            "armazenamento": 512,
+            "bateria": {
+                "capacidade": 5500,
+                "carregamento": "90W",
+                "carregamento_wireless": "80W"
+            },
+            "so": "Android 14",
+            "dimensoes": "162.63 x 75.51 x 9.2 mm",
+            "peso": 221
+        },
+        "destaques": [
+            "Câmeras Leica",
+            "Carregamento 90W",
+            "16GB de RAM",
+            "Melhor custo-benefício"
+        ],
+        "categorias": ["custo-beneficio", "fotografia", "gaming"]
+    }
+}
+
+# Salvar em arquivo
+with open('phones_database.json', 'w', encoding='utf-8') as f:
+    json.dump(phones_data, f, indent=2, ensure_ascii=False)
+
+# Carregar e usar
+class PhoneDatabaseLocal:
+    def __init__(self):
+        with open('phones_database.json', 'r', encoding='utf-8') as f:
+            self.data = json.load(f)
+    
+    def get_phone(self, model_name: str) -> dict:
+        return self.data.get(model_name)
+    
+    def buscar_por_categoria(self, categoria: str) -> list:
+        """Retorna todos os phones de uma categoria"""
+        resultados = []
+        for nome, specs in self.data.items():
+            if categoria.lower() in [c.lower() for c in specs.get('categorias', [])]:
+                resultados.append(nome)
+        return resultados
+
+# Usar
+db = PhoneDatabaseLocal()
+
+# Buscar um telefone
+iphone = db.get_phone("iPhone 15 Pro Max")
+print(f"Câmera: {iphone['especificacoes']['camera']['principal']['megapixels']}MP")
+
+# Buscar por categoria
+cameras_boas = db.buscar_por_categoria("fotografia")
+print(f"Telefones para fotografia: {cameras_boas}")
+FORMA 4: Integração com PostgreSQL (PROFISSIONAL)
+python
+import psycopg2
+from psycopg2.extras import RealDictCursor
+import requests
+
+class PhoneDataIntegrator:
+    """
+    Integra dados reais de APIs no PostgreSQL
+    """
+    
+    def __init__(self, db_url: str):
+        self.db_url = db_url
+    
+    def fetch_and_store_phone_specs(self, models_list: list):
+        """
+        Fetch dados reais de cada modelo e armazena no PostgreSQL
+        """
+        conn = psycopg2.connect(self.db_url)
+        cur = conn.cursor()
+        
+        for model in models_list:
+            print(f"Buscando dados de: {model}")
+            
+            # Opção 1: Usar API
+            specs = self._fetch_from_api(model)
+            
+            # Opção 2: Usar JSON local
+            if not specs:
+                specs = self._fetch_from_json(model)
+            
+            if specs:
+                # Atualizar PostgreSQL
+                cur.execute("""
+                    UPDATE produtos SET
+                        tela_tamanho = %s,
+                        tela_tipo = %s,
+                        camera_principal_mp = %s,
+                        camera_frontal_mp = %s,
+                        bateria_mah = %s,
+                        carregamento_w = %s,
+                        processador = %s,
+                        ram_gb = %s,
+                        armazenamento_gb = %s,
+                        data_atualizacao = CURRENT_TIMESTAMP
+                    WHERE modelo = %s
+                """, (
+                    specs.get('tela_tamanho'),
+                    specs.get('tela_tipo'),
+                    specs.get('camera_principal_mp'),
+                    specs.get('camera_frontal_mp'),
+                    specs.get('bateria_mah'),
+                    specs.get('carregamento_w'),
+                    specs.get('processador'),
+                    specs.get('ram_gb'),
+                    specs.get('armazenamento_gb'),
+                    model
+                ))
+                
+                conn.commit()
+                print(f"✅ {model} atualizado no PostgreSQL")
+        
+        cur.close()
+        conn.close()
+    
+    def _fetch_from_api(self, model_name: str) -> dict:
+        """Tenta buscar de API pública"""
+        try:
+            # Exemplo com API GSMArena wrapper
+            from gsmarena_api.client import PhoneClient
+            client = PhoneClient()
+            phones = client.search(model_name)
+            
+            if phones:
+                specs = client.get_phone_specs(phones[0])
+                
+                return {
+                    'tela_tamanho': self._parse_size(specs.display_size),
+                    'tela_tipo': specs.display_type,
+                    'camera_principal_mp': self._parse_mp(specs.main_camera),
+                    'camera_frontal_mp': self._parse_mp(specs.selfie_camera),
+                    'bateria_mah': self._parse_mah(specs.battery_capacity),
+                    'carregamento_w': self._parse_watts(specs.charging),
+                    'processador': specs.processor,
+                    'ram_gb': self._parse_ram(specs.ram),
+                    'armazenamento_gb': self._parse_storage(specs.storage)
+                }
+        except:
+            return None
+    
+    def _fetch_from_json(self, model_name: str) -> dict:
+        """Fallback: Busca de JSON local"""
+        import json
+        try:
+            with open('phones_database.json', 'r') as f:
+                data = json.load(f)
+                phone = data.get(model_name)
+                if phone:
+                    return phone['especificacoes']
+        except:
+            pass
+        return None
+    
+    # Helpers para parsing
+    def _parse_size(self, size_str: str) -> float:
+        import re
+        match = re.search(r'(\d+\.?\d*)', size_str)
+        return float(match.group(1)) if match else None
+    
+    def _parse_mp(self, camera_str: str) -> int:
+        import re
+        match = re.search(r'(\d+)\s*MP', camera_str)
+        return int(match.group(1)) if match else None
+    
+    def _parse_mah(self, battery_str: str) -> int:
+        import re
+        match = re.search(r'(\d+)\s*mAh', battery_str)
+        return int(match.group(1)) if match else None
+    
+    def _parse_watts(self, charging_str: str) -> int:
+        import re
+        match = re.search(r'(\d+)W', charging_str)
+        return int(match.group(1)) if match else None
+    
+    def _parse_ram(self, ram_str: str) -> int:
+        import re
+        match = re.search(r'(\d+)\s*GB', ram_str)
+        return int(match.group(1)) if match else None
+    
+    def _parse_storage(self, storage_str: str) -> int:
+        import re
+        match = re.search(r'(\d+)\s*GB', storage_str)
+        return int(match.group(1)) if match else None
+
+# Usar
+integrator = PhoneDataIntegrator("postgresql://postgres:senha@localhost/loja_celulares")
+
+modelos = [
+    "Samsung Galaxy S24 Ultra",
+    "iPhone 15 Pro Max",
+    "Xiaomi 14 Ultra",
+    "Motorola Moto G54"
+]
+
+integrator.fetch_and_store_phone_specs(modelos)
+🎯 QUAL FORMA É MELHOR PARA VOCÊ?
+Forma	Prós	Contras	Melhor Para
+API GSMArena	Gratuito, preciso	Limite de requisições	Produção
+Web Scraping	Funciona sempre	Frágil a mudanças	Prototipo
+JSON Local	Rápido, confiável	Manual de atualizar	Aprendizado
+RapidAPI	Mais confiável	Pago (~$15/mês)	Profissional
+🚀 PLANO PRÁTICO PARA VOCÊ AGORA
+HOJE:
+python
+# 1. Criar phones_database.json com dados dos 6 modelos que você tem
+# 2. Integrar JSON local no PostgreSQL
+# 3. Testar ChromaDB + PostgreSQL juntos
+PRÓXIMA SEMANA:
+python
+# 1. Implementar API GSMArena para atualizar dados automaticamente
+# 2. Sincronizar PostgreSQL com ChromaDB
+# 3. Criar endpoint que faz busca dual (ambos os bancos)
+

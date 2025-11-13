@@ -1,5 +1,6 @@
 const wppconnect = require('@wppconnect-team/wppconnect');
 const fs = require('fs');
+const axios = require('axios'); // Adicionado axios
 
 console.log('🚀 Iniciando WPPConnect...\n');
 
@@ -7,7 +8,7 @@ async function start() {
   try {
     const client = await wppconnect.create({
       session: 'loja-celulares',
-      headless: false,
+      headless: true,
       devtools: false,
       useChrome: true,
       disableWelcome: true,
@@ -34,40 +35,31 @@ async function start() {
 
     // RECEBER MENSAGENS
     client.onMessage(async (message) => {
-      console.log('\n--- NOVA MENSAGEM RECEBIDA ---');
-      console.log(JSON.stringify(message, null, 2)); // Loga o objeto completo da mensagem
+      // Ignorar mensagens de status, grupos e que não sejam de texto
+      if (message.isStatus || message.isGroupMsg || !message.body) {
+        return;
+      }
 
+      console.log('\n--- NOVA MENSAGEM RECEBIDA ---');
       console.log(`\n📨 Mensagem de ${message.from}:`);
       console.log(`   Texto: ${message.body}\n`);
-      console.log(`   De: ${message.from}\n`);
-      // Chamar o script Python para processar a pergunta
-      const { spawn } = require('child_process');
-      if (message.from === '5521980306189@c.us') {
-        const pythonProcess = spawn('python', ['-u', 'ai_agent.py', message.body], {
-          stdio: ['pipe', 'pipe', 'pipe'],
-          encoding: 'utf-8',
-          env: { ...process.env, PYTHONIOENCODING: 'utf-8' }
+
+      try {
+        // Envia a mensagem para o webhook do Flask
+        const response = await axios.post('http://localhost:5000/webhook', {
+          message: message.body
         });
 
-        let scriptOutput = "";
-        pythonProcess.stdout.on('data', (data) => {
-            scriptOutput += data.toString('utf-8');
-        });
-
-        let scriptError = "";
-        pythonProcess.stderr.on('data', (data) => {
-            scriptError += data.toString('utf-8');
-            console.error(`Erro do Python: ${data}`);
-        });
-
-        pythonProcess.on('close', (code) => {
-            if (code === 0) {
-                client.sendText(message.from, scriptOutput);
-            } else {
-                client.sendText(message.from, 'Desculpe, ocorreu um erro ao processar sua solicitação.');
-            }
-        });
-    }
+        // Envia a resposta do agente de IA de volta para o usuário
+        if (response.data && response.data.response) {
+          client.sendText(message.from, response.data.response);
+        } else {
+          client.sendText(message.from, 'Desculpe, não consegui obter uma resposta.');
+        }
+      } catch (error) {
+        console.error('❌ Erro ao contatar o webhook:', error.message);
+        client.sendText(message.from, 'Desculpe, ocorreu um erro ao processar sua solicitação.');
+      }
     });
 
   } catch (error) {

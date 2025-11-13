@@ -23,3 +23,4 @@ qrcode.png
 tokens/
 .wwebjs_auth/
 .wwebjs_cache/
+backup_info/
