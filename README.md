@@ -102,3 +102,16 @@ A partir deste momento, o chatbot estará ativo e pronto para receber mensagens 
 ---
 
 ### Desenvolvido por Fábio Rosestolato Ferreira
+ 
+---
+ 
+## Atualizações e Melhorias – 14/11/2025
+ 
+- Correção crítica no `wppconnect_qrcode.js` (removidos escapes inválidos `=\u003e` e `\u0026\u0026`).
+- Logs aprimorados para grupos, menções e fluxo de mensagens no conector WhatsApp.
+- Ajuste no `/health` do Flask para status consistente e métricas funcionais.
+- Integração e validação ponta a ponta: mensagens e respostas visíveis nos terminais.
+- Guardrails técnicos no `ai_agent.py`: respostas realistas, moderadas e baseadas em dados.
+- Preparação para RAG técnico com documentos base (NFC, Dual SIM/eSIM, câmeras) nos principais modelos.
+- Suporte a execução contínua com PM2 (`wpp` e `flask`) e reinício automático.
+- Caminho de envio de imagens ajustado no conector para compatibilidade com arquivos locais.

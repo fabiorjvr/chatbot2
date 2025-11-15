@@ -1,546 +1,314 @@
-# -*- coding: utf-8 -*-
 from dotenv import load_dotenv
 load_dotenv()
 
-from groq import Groq
 import os
 import json
-from tools import DatabaseTools
-from rag.vector_store import VectorStoreManager
+try:
+    from rag.gemini_fs import GeminiFileSearchManager
+except Exception:
+    from rag.file_search_rest import GeminiFileSearchREST as GeminiFileSearchManager
 import sys
-import inspect
 import re
+from datetime import datetime
+from groq import Groq
 
 class AIAgent:
-    """
-    Agente de IA profissional que SEMPRE usa dados do banco antes de responder.
-    """
-
     def __init__(self):
-        self.db_tools = DatabaseTools()
-        self.vector_store = VectorStoreManager()
-        
-        groq_api_key = os.getenv("GROQ_API_KEY")
-        if not groq_api_key:
-            raise ValueError("A chave da API Groq não foi encontrada. Verifique o arquivo .env e a variável GROQ_API_KEY.")
-        
-        self.client = Groq(api_key=groq_api_key)
-        
-        # MUDANÇA CRÍTICA 1: Usar modelo 70B em vez de 8B
-        self.model_name = "llama-3.3-70b-versatile"  # Modelo MUITO melhor e ainda gratuito
-        
-        self.tools = self._get_tools_definitions()
-        self.system_prompt = self._build_system_prompt()
-        
-        # Lista de modelos válidos (cache)
-        self.modelos_validos = [
-            "iPhone 15 Pro Max",
-            "Motorola Moto G54",
-            "Samsung Galaxy A54",
-            "Samsung Galaxy S24 Ultra",
-            "Xiaomi 13T",
-            "Xiaomi Redmi Note 13"
-        ]
+        self.file_search = GeminiFileSearchManager()
+        self.conversation_histories = {}
+        groq_key = os.environ.get("GROQ_API_KEY")
+        self.groq = Groq(api_key=groq_key) if groq_key else None
+        self.groq_model = "llama-3.1-70b-versatile"
+        self.system_prompt = f"""
+Você é Renato Tanner, vendedor especialista da PHONES PARAGUAY, atendendo via WhatsApp.
+
+Estilo:
+- Postura profissional, direta e cordial.
+- Emojis apenas quando agregarem (no máximo 1 por parágrafo).
+- Se fugir do tema, use uma risada breve (rs) e retome ao assunto.
+
+Guardrails técnicos (NUNCA violar):
+- Responder sobre câmeras, NFC, Dual SIM/eSIM, desempenho e bateria com base técnica real.
+- Usar o RAG da Gemini (File Search) como principal fonte técnica.
+- Se não houver informação, dizer claramente que não há dado e sugerir confirmar.
+
+Data: {datetime.now().strftime('%d/%m/%Y')}.
+"""
+        try:
+            print("\n--- INICIALIZANDO FILE SEARCH ---", file=sys.stderr)
+            store_name = self.file_search.ensure_store(display_name="celulares-fichas-tecnicas")
+            pdf_path = os.path.abspath("celularrag.pdf")
+            if os.path.exists(pdf_path):
+                print(f"📄 Encontrado: {pdf_path}", file=sys.stderr)
+                self.file_search.upload_file(pdf_path, "celularrag.pdf")
+            else:
+                print(f"⚠️  Arquivo 'celularrag.pdf' não encontrado no diretório.", file=sys.stderr)
+            print("--- FILE SEARCH PRONTO ---\n", file=sys.stderr)
+        except Exception as e:
+            print(f"🚨 CRÍTICO: Falha ao inicializar o File Search (RAG): {e}", file=sys.stderr)
+            # A aplicação pode continuar, mas o RAG não funcionará.
+            pass
 
     def _get_tools_definitions(self) -> list:
-        """
-        Gera as definições das ferramentas de forma SIMPLIFICADA.
-        MUDANÇA CRÍTICA 2: Reduzir número de ferramentas para evitar confusão do modelo.
-        """
-        tool_definitions = []
-        
-        # APENAS as ferramentas ESSENCIAIS
-        ferramentas_essenciais = [
-            'get_smartphone_details_and_photos',
-            'get_top_sold_products',
-            'get_monthly_revenue',
-            'get_product_sales'
+        return []
+
+    def _extract_model_name(self, user_message: str) -> str:
+        message_lower = user_message.lower()
+        message_clean = re.sub(r'[^\w\s]', '', message_lower)
+        model_map = {
+            "iphone 15 pro max": "iPhone 15 Pro Max",
+            "iphone 15 pro": "iPhone 15 Pro",
+            "iphone 15": "iPhone 15 Pro",
+            "moto g54": "Motorola Moto G54",
+            "motorola g54": "Motorola Moto G54",
+            "a54": "Samsung Galaxy A54",
+            "galaxy a54": "Samsung Galaxy A54",
+            "s24 ultra": "Samsung Galaxy S24 Ultra",
+            "galaxy s24 ultra": "Samsung Galaxy S24 Ultra",
+            "xiaomi 13t": "Xiaomi 13T",
+            "13t": "Xiaomi 13T",
+            "redmi note 13": "Xiaomi Redmi Note 13",
+            "note 13": "Xiaomi Redmi Note 13",
+        }
+        for alias, full_name in model_map.items():
+            if alias in message_clean:
+                return full_name
+        return None
+
+    def _extract_name_question(self, user_message: str) -> bool:
+        """Detecta se a mensagem está perguntando sobre o nome do vendedor."""
+        name_patterns = [
+            'qual seu nome', 'como você se chama', 'seu nome é', 'como se chama',
+            'quem é você', 'qual é seu nome', 'me diga seu nome', 'posso saber seu nome'
         ]
+        return any(pattern in user_message.lower() for pattern in name_patterns)
+
+    def _extract_greeting_or_wellbeing(self, user_message: str) -> dict:
+        """Detecta cumprimentos e perguntas sobre bem-estar."""
+        greetings = ['oi', 'olá', 'opa', 'e aí', 'bom dia', 'boa tarde', 'boa noite']
+        wellbeing = ['como você está', 'como vai', 'tudo bem com você', 'tudo certo', 'tudo bem']
         
-        for name, func in inspect.getmembers(self.db_tools, inspect.isfunction):
-            if name.startswith("_") or name not in ferramentas_essenciais:
-                continue
+        message_lower = user_message.lower()
+        
+        if any(g in message_lower for g in greetings):
+            return {'tipo': 'cumprimento'}
+        elif any(w in message_lower for w in wellbeing):
+            return {'tipo': 'bem_estar'}
+        return {'tipo': 'conversa_geral'}
 
-            docstring = inspect.getdoc(func)
-            if not docstring:
-                continue
+    def _extract_intent(self, message_lower: str) -> dict:
+        if any(p in message_lower for p in ['foto', 'imagem', 'mostre', 'ver o', 'quero ver']):
+            return {'tipo': 'pedido_foto'}
+        palavras_tecnicas = [
+            'processador','ram','memória','armazenamento','câmera','bateria','tela','display','preço','valor','ficha técnica','comparar','diferença','melhor'
+        ]
+        if any(p in message_lower for p in palavras_tecnicas):
+            return {'tipo': 'pergunta_tecnica'}
+        if any(p in message_lower for p in ['nfc','pagamento por aproximação','aproximação','google pay','apple pay','samsung pay']):
+            return {'tipo': 'pergunta_nfc'}
+        if any(p in message_lower for p in ['dois chips','2 chips','dual sim','e-sim','esim']):
+            return {'tipo': 'pergunta_dual_sim'}
+        if any(p in message_lower for p in ['vendido','vendas','mais vendeu','vendeu mais','campeão','líder','top','receita','faturamento']):
+            return {'tipo': 'pergunta_vendas'}
+        return {'tipo': 'conversa_geral'}
 
-            # Extrair descrição
-            description_match = re.match(r"^(.*?)\n", docstring, re.DOTALL)
-            description = description_match.group(1).strip() if description_match else "Sem descrição."
+    def _handle_greeting_response(self) -> dict:
+        """Retorna resposta para cumprimentos."""
+        import random
+        greetings = [
+            "Oi! Sou Renato Tanner da PHONES PARAGUAY. Como posso te ajudar hoje?",
+            "Olá! Aqui é Renato, consultor de smartphones da PHONES PARAGUAY. Vamos achar o modelo ideal para você.",
+            "Opa! Renato Tanner da PHONES PARAGUAY. Qual modelo você procura?"
+        ]
+        return {"tipo": "texto", "conteudo": random.choice(greetings)}
+
+    def _handle_wellbeing_response(self) -> dict:
+        """Retorna resposta para perguntas sobre bem-estar."""
+        import random
+        responses = [
+            "Tudo certo por aqui. Vamos focar no seu objetivo: qual modelo te interessa?",
+            "Estou bem, obrigado. Me fala como pretende usar o aparelho e eu te indico com precisão.",
+            "Tranquilo. Qual seu orçamento e prioridade (câmera, desempenho, bateria)?"
+        ]
+        return {"tipo": "texto", "conteudo": random.choice(responses)}
+
+    def _handle_name_question_response(self) -> dict:
+        """Retorna resposta quando perguntam sobre o nome."""
+        return {"tipo": "texto", "conteudo": "Meu nome é Renato Tanner. Sou especialista em smartphones na PHONES PARAGUAY há 8 anos. Como posso te ajudar hoje?"}
+
+    def _handle_photo_request(self, model_name: str) -> list:
+        """Retorna fotos do produto solicitado."""
+        if not model_name:
+            return [{"tipo": "texto", "conteudo": "Para qual modelo você gostaria de ver a foto? Temos iPhones, Samsungs e Xiaomis! 📱"}]
+        
+        # Lista de produtos com fotos disponíveis
+        available_photos = {
+            'iphone 15 pro': 'product_images/iPhone 15 Pro Natural titanium.png',
+            'iphone 15': 'product_images/iPhone 15 Pro Natural titanium.png',
+            'samsung galaxy a54': 'product_images/samsung_galaxy_a54.png',
+            'galaxy a54': 'product_images/samsung_galaxy_a54.png',
+            'xiaomi 13t': 'product_images/xiaomi_13t.png',
+            'redmi note 13': 'product_images/redmi_note_13.png'
+        }
+        
+        # Verificar se temos foto local para este modelo
+        model_key = model_name.lower()
+        if model_key in available_photos:
+            local_image_path = os.path.abspath(available_photos[model_key])
+            if os.path.exists(local_image_path):
+                return [{"tipo": "fotos", "fotos": [local_image_path], "legenda": f"📱 {model_name} - Disponível na PHONES PARAGUAY"}]
+        
+        return [{"tipo": "texto", "conteudo": f"Não encontrei uma imagem para {model_name}, mas posso te dar todas as especificações técnicas! 📋"}]
+
+    def process_message(self, user_id: str, user_message: str) -> dict:
+        if user_id not in self.conversation_histories:
+            self.conversation_histories[user_id] = [{"role": "system", "content": self.system_prompt}]
+        self.conversation_histories[user_id].append({"role": "user", "content": user_message})
+        try:
             
-            # MUDANÇA CRÍTICA 3: Descrições ULTRA específicas
-            if name == "get_smartphone_details_and_photos":
-                description = """
-FERRAMENTA OBRIGATÓRIA para QUALQUER pergunta sobre especificações técnicas de smartphones.
-Use esta ferramenta quando o usuário perguntar sobre:
-- Processador, RAM, memória, armazenamento
-- Câmera, bateria, tela, display
-- Preço, valor, custo
-- Características, especificações, detalhes técnicos
-- Comparação entre dois modelos específicos
-Exemplos de perguntas que EXIGEM esta ferramenta:
-- "Qual o processador do Xiaomi 13T?"
-- "Quanto custa o iPhone 15 Pro Max?"
-- "Qual a diferença entre Samsung A54 e Xiaomi 13T?"
-"""
-            elif name == "get_top_sold_products":
-                description = "Retorna os produtos MAIS VENDIDOS. Use quando perguntarem sobre 'mais vendido', 'campeão de vendas', 'líder', 'top vendas'."
-            elif name == "get_monthly_revenue":
-                description = "Retorna o FATURAMENTO TOTAL de um mês/ano. Use quando perguntarem sobre 'receita', 'faturamento', 'quanto vendeu em dinheiro'."
-            elif name == "get_product_sales":
-                description = "Retorna as VENDAS de UM produto específico. Use quando perguntarem 'quantos [modelo] foram vendidos?', 'vendas do [modelo]'."
-
-            param_docs = dict(re.findall(r"-\s+([a-zA-Z_]+)\s+\([^)]+\):\s+(.*)", docstring))
-            sig = inspect.signature(func)
-            parameters = sig.parameters
+            # Verificar se é pergunta sobre o nome
+            if self._extract_name_question(user_message):
+                response_action = self._handle_name_question_response()
+                return response_action
             
-            tool_params = {
-                "type": "object",
-                "properties": {},
-                "required": [],
-            }
-
-            for param_name, param in parameters.items():
-                if param_name == 'self':
-                    continue
-                
-                param_type = "string"
-                if param.annotation == int:
-                    param_type = "integer"
-                elif param.annotation == float:
-                    param_type = "number"
-                elif param.annotation == bool:
-                    param_type = "boolean"
-                elif param.annotation == list:
-                    param_type = "array"
-
-                tool_params["properties"][param_name] = {
-                    "type": param_type,
-                    "description": param_docs.get(param_name, ""),
-                }
-
-                if param.default is inspect.Parameter.empty:
-                    tool_params["required"].append(param_name)
+            # Verificar cumprimentos e bem-estar
+            greeting_intent = self._extract_greeting_or_wellbeing(user_message)
+            if greeting_intent.get('tipo') == 'cumprimento':
+                response_action = self._handle_greeting_response()
+                return response_action
+            elif greeting_intent.get('tipo') == 'bem_estar':
+                response_action = self._handle_wellbeing_response()
+                return response_action
             
-            tool_definitions.append({
-                "type": "function",
-                "function": {
-                    "name": name,
-                    "description": description,
-                    "parameters": tool_params,
-                },
-            })
-            
-        return tool_definitions
+            intent = self._extract_intent(user_message.lower())
+            if intent.get('tipo') == 'pedido_foto':
+                actions = self._handle_photo_request(self._extract_model_name(user_message))
+                response_action = actions[0] if actions else {"tipo": "texto", "conteudo": "Não encontrei imagem."}
+                try:
+                    self.db_tools.save_conversation_message(user_id, "assistant", "[fotos]" if response_action.get('tipo') != 'texto' else response_action.get('conteudo',''), datetime.now())
+                except Exception:
+                    pass
+                return response_action
+            if intent.get('tipo') in ['pergunta_nfc','pergunta_dual_sim']:
+                model = self._extract_model_name(user_message)
+                content = self._answer_features_with_rag(model, intent.get('tipo'))
+                return content
+            # Perguntas técnicas e gerais vão para o RAG da Gemini
+            if intent.get('tipo') in ['pergunta_tecnica', 'pergunta_nfc', 'pergunta_dual_sim']:
+                model = self._extract_model_name(user_message)
+                content = self._answer_features_with_rag(model, intent.get('tipo'))
+                return content
+            texto = self.file_search.query(user_message) or "Me diga o modelo e sua prioridade (câmera, desempenho, bateria) que eu te oriento."
+            return {"tipo": "texto", "conteudo": texto}
+        except Exception as e:
+            if self.groq:
+                try:
+                    msgs = self.conversation_histories.get(user_id, []) + [{"role": "user", "content": user_message}]
+                    comp = self.groq.chat.completions.create(messages=msgs, model=self.groq_model, max_tokens=512)
+                    txt = comp.choices[0].message.content
+                    return {"tipo": "texto", "conteudo": txt}
+                except Exception:
+                    pass
+            return {"tipo": "texto", "conteudo": "Desculpe, estou com um problema técnico. Tente novamente em alguns instantes."}
 
-    def _build_system_prompt(self) -> str:
-        """
-        MUDANÇA CRÍTICA 4: System prompt CURTO, DIRETO e IMPERATIVO.
-        """
-        return f'''Você é Fabio, especialista em vendas de smartphones.
-
-DATA ATUAL: 12 de Novembro de 2025.
-
-MODELOS DISPONÍVEIS EM ESTOQUE (MEMORIZE):
-1. iPhone 15 Pro Max (Apple)
-2. Motorola Moto G54 (Motorola)
-3. Samsung Galaxy A54 (Samsung)
-4. Samsung Galaxy S24 Ultra (Samsung)
-5. Xiaomi 13T (Xiaomi)
-6. Xiaomi Redmi Note 13 (Xiaomi)
-
-REGRA ABSOLUTA DE OURO (NUNCA QUEBRE):
-
-Se a pergunta menciona QUALQUER informação técnica (processador, RAM, câmera, bateria, preço, especificações), você DEVE:
-1. Chamar get_smartphone_details_and_photos com o nome EXATO do modelo
-2. ESPERAR o resultado da ferramenta
-3. Responder APENAS com os dados retornados
-
-NUNCA invente dados técnicos. Se você não chamou a ferramenta, você NÃO SABE a resposta.
-
-EXEMPLOS OBRIGATÓRIOS:
-
-❌ ERRADO:
-User: "Qual o processador do Xiaomi 13T?"
-Você: "O Xiaomi 13T tem processador MediaTek Dimensity 8200..."
-
-✅ CORRETO:
-User: "Qual o processador do Xiaomi 13T?"
-Você: [CHAMA get_smartphone_details_and_photos(modelo="Xiaomi 13T")]
-[ESPERA resultado]
-Você: "Segundo nossos dados, o Xiaomi 13T possui [dado real do banco]"
-
-NORMALIZAÇÃO DE NOMES:
-- "Redmi Note 13" = "Xiaomi Redmi Note 13"
-- "Galaxy A54" = "Samsung Galaxy A54"
-- "iPhone 15 Pro Max" = "iPhone 15 Pro Max"
-- "S24 Ultra" = "Samsung Galaxy S24 Ultra"
-- "Moto G54" = "Motorola Moto G54"
-
-Se o usuário perguntar sobre um modelo que NÃO está na lista, ofereça uma alternativa da mesma marca ou similar.
-
-Seja amigável, mas SEMPRE baseie suas respostas em DADOS REAIS das ferramentas.'''
-
-    def _format_response(self, tool_name: str, data: list) -> str:
-        """Formata os dados em resposta amigável."""
+    def _format_response(self, tool_name: str, data: list) -> list[dict]:
+        """Formata respostas técnicas com apresentação clara e moderada."""
+        actions = []
         if not data or (isinstance(data, list) and len(data) > 0 and "erro" in data[0]):
             erro_msg = data[0].get('erro', 'Dados não encontrados') if data else 'Dados não encontrados'
-            return f"❌ {erro_msg}"
-
+            actions.append({"tipo": "texto", "conteudo": f"{erro_msg}"})
+            return actions
         try:
             if tool_name == "get_smartphone_details_and_photos":
                 if not data:
-                    return "❌ Não encontrei detalhes para o modelo solicitado."
-                
+                    actions.append({"tipo": "texto", "conteudo": "Não encontrei detalhes para o modelo solicitado."})
+                    return actions
                 p = data[0]
-                resposta = f"📱 *{p.get('modelo', 'Modelo')}* ({p.get('fabricante', 'Fabricante')})\n\n"
+                texto_resposta = f"{p.get('modelo','Modelo')} ({p.get('fabricante','Fabricante')})\n"
+                texto_resposta += f"Disponível na PHONES PARAGUAY\n\n"
                 
                 specs = p.get('especificacoes_tecnicas', {})
                 if specs:
-                    resposta += "*Especificações Técnicas:*\n"
-                    if 'processador' in specs:
-                        resposta += f"🔧 Processador: {specs['processador']}\n"
-                    if 'ram' in specs:
-                        resposta += f"💾 RAM: {specs['ram']}\n"
-                    if 'armazenamento' in specs:
-                        resposta += f"💿 Armazenamento: {specs['armazenamento']}\n"
-                    if 'camera_principal' in specs:
-                        resposta += f"📸 Câmera: {specs['camera_principal']}\n"
-                    if 'bateria' in specs:
-                        resposta += f"🔋 Bateria: {specs['bateria']}\n"
-                    if 'tela' in specs:
-                        resposta += f"📺 Tela: {specs['tela']}\n"
-                    resposta += "\n"
+                    texto_resposta += "ESPECIFICAÇÕES TÉCNICAS:\n"
+                    if 'processador' in specs: texto_resposta += f"- Processador: {specs['processador']}\n"
+                    if 'ram' in specs: texto_resposta += f"- RAM: {specs['ram']}\n"
+                    if 'armazenamento' in specs: texto_resposta += f"- Armazenamento: {specs['armazenamento']}\n"
+                    if 'camera_principal' in specs: texto_resposta += f"- Câmera: {specs['camera_principal']}\n"
+                    if 'bateria' in specs: texto_resposta += f"- Bateria: {specs['bateria']}\n"
+                    if 'tela' in specs: texto_resposta += f"- Tela: {specs['tela']}\n"
                 
                 info_geral = p.get('info_geral', {})
                 if info_geral and 'preco' in info_geral:
-                    resposta += f"💰 *Preço: R$ {info_geral['preco']}*\n\n"
+                    texto_resposta += f"\nPREÇO: R$ {info_geral['preco']}\n"
                 
                 pontos_fortes = p.get('pontos_fortes', [])
                 if pontos_fortes:
-                    resposta += "*✅ Pontos Fortes:*\n"
-                    for ponto in pontos_fortes[:3]:
-                        resposta += f"  • {ponto}\n"
-                    resposta += "\n"
+                    texto_resposta += f"\nPONTOS FORTES:\n" + "\n".join([f"- {pf}" for pf in pontos_fortes[:3]])
                 
-                fotos = p.get('fotos', [])
-                if fotos:
-                    resposta += "*📸 Fotos:*\n"
-                    for foto in fotos[:2]:
-                        resposta += f"{foto}\n"
+                texto_resposta += f"\n\nQuer saber mais? Pergunte sobre fotos, comparações ou disponibilidade."
                 
-                return resposta
-
+                actions.append({"tipo": "texto", "conteudo": texto_resposta.strip()})
+                if p.get('fotos'):
+                    actions.append({"tipo": "fotos", "fotos": p['fotos'], "legenda": f"Fotos do {p.get('modelo','celular')} - PHONES PARAGUAY"})
+                return actions
             elif tool_name == "get_top_sold_products":
                 if len(data) == 1:
                     p = data[0]
-                    return f"🏆 *Produto Mais Vendido:*\n\n📱 {p['modelo']} ({p['fabricante']})\n📦 {p['unidades_vendidas']:,} unidades\n💰 R$ {p['receita_total']:,.2f}"
+                    texto = f"🏆 *PRODUTO MAIS VENDIDO:*\n\n📱 {p['modelo']} ({p['fabricante']})\n📦 {p['unidades_vendidas']:,} unidades\n💰 R$ {p['receita_total']:,.2f}"
                 else:
-                    lines = ["🏆 *Top Produtos Mais Vendidos:*\n"]
-                    for i, p in enumerate(data[:5], 1):
-                        emoji = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}º"
-                        lines.append(f"{emoji} *{p['modelo']}* ({p['fabricante']})")
-                        lines.append(f"   📦 {p['unidades_vendidas']:,} unidades | 💰 R$ {p['receita_total']:,.2f}\n")
-                    return "\n".join(lines)
-
+                    linhas = ["🏆 *TOP PRODUTOS MAIS VENDIDOS:*"]
+                    for i, p in enumerate(data[:3], 1):
+                        emoji = "🥇" if i == 1 else "🥈" if i == 2 else "🥉"
+                        linhas.append(f"\n{emoji} *{p['modelo']}* ({p['fabricante']})*")
+                        linhas.append(f"   📦 {p['unidades_vendidas']:,} | 💰 R$ {p['receita_total']:,.2f}")
+                    texto = "\n".join(linhas)
+                actions.append({"tipo": "texto", "conteudo": texto})
+                return actions
             elif tool_name == "get_monthly_revenue":
                 d = data[0]
-                return f"💰 *Receita do Período:*\n\n💵 Total: R$ {d['receita_total']:,.2f}\n📦 Unidades: {d['total_unidades']:,}"
-
+                texto = f"RECEITA DO PERÍODO:\n\nTotal: R$ {d['receita_total']:,.2f}\nUnidades: {d['total_unidades']:,}"
+                actions.append({"tipo": "texto", "conteudo": texto})
+                return actions
             elif tool_name == "get_product_sales":
                 if data:
                     p = data[0]
-                    return f"📊 *Vendas de {p.get('modelo', 'Produto')}: {p.get('unidades_vendidas', 0)} unidades, gerando R$ {p.get('receita', 0):,.2f}."
-            
-            return f"Resultado de {tool_name}: {json.dumps(data, indent=2, ensure_ascii=False)}"
-
+                    texto = f"Vendas de {p.get('modelo','Produto')}: {p.get('unidades_vendidas',0)} unidades, R$ {p.get('receita',0):,.2f}."
+                    actions.append({"tipo": "texto", "conteudo": texto})
+                return actions
+            actions.append({"tipo": "texto", "conteudo": json.dumps(data, ensure_ascii=False)})
+            return actions
         except Exception as e:
-            return f"🐞 Erro ao formatar resposta: {e}"
+            actions.append({"tipo": "texto", "conteudo": f"Erro ao formatar: {e}"})
+            return actions
 
-    def _normalize_model_name(self, text: str) -> str:
-        """Normaliza o nome de um modelo de smartphone a partir de um texto."""
-        text_lower = text.lower()
-        
-        # Mapeamento de apelidos para nomes completos
-        model_map = {
-            "redmi note 13": "Xiaomi Redmi Note 13",
-            "galaxy a54": "Samsung Galaxy A54",
-            "iphone 15 pro max": "iPhone 15 Pro Max",
-            "s24 ultra": "Samsung Galaxy S24 Ultra",
-            "moto g54": "Motorola Moto G54",
-            "xiaomi 13t": "Xiaomi 13T"
-        }
-
-        for alias, full_name in model_map.items():
-            if alias in text_lower:
-                return full_name
-        
-        # Se não encontrar um apelido, tenta encontrar o nome completo
-        for model in self.modelos_validos:
-            if model.lower() in text_lower:
-                return model
-                
+    def _ensure_base_docs(self):
         return None
 
-    def _find_mentioned_models(self, text: str) -> list:
-        """Encontra todos os modelos de smartphones válidos mencionados em um texto."""
-        mentioned = set()
-        text_lower = text.lower()
-        
-        # Mapeamento de apelidos para nomes completos
-        model_map = {
-            "redmi note 13": "Xiaomi Redmi Note 13",
-            "galaxy a54": "Samsung Galaxy A54",
-            "iphone 15 pro max": "iPhone 15 Pro Max",
-            "s24 ultra": "Samsung Galaxy S24 Ultra",
-            "moto g54": "Motorola Moto G54",
-            "xiaomi 13t": "Xiaomi 13T"
-        }
-
-        # Verifica apelidos primeiro
-        for alias, full_name in model_map.items():
-            if alias in text_lower:
-                mentioned.add(full_name)
-        
-        # Verifica nomes completos (para garantir que não perca nada)
-        for model in self.modelos_validos:
-            if model.lower() in text_lower:
-                mentioned.add(model)
-                
-        return list(mentioned)
-
-    def process_message(self, user_message: str) -> str:
-        """
-        MUDANÇA CRÍTICA 5: Lógica de roteamento DETERMINÍSTICA.
-        A IA só é usada quando estritamente necessário.
-        """
-        user_message_lower = user_message.lower()
-        
-        # Palavras-chave que indicam uma pergunta técnica
-        palavras_tecnicas = [
-            'processador', 'ram', 'memória', 'armazenamento', 'câmera', 'bateria', 
-            'tela', 'display', 'preço', 'valor', 'custo', 'característica', 
-            'especificação', 'detalhe', 'ficha técnica', 'comparar', 'vs', 'x', 
-            'diferença', 'melhor', 'pior'
-        ]
-        
-        pergunta_tecnica = any(palavra in user_message_lower for palavra in palavras_tecnicas)
-        modelos_mencionados = self._find_mentioned_models(user_message)
-
-        # FLUXO 1: Pergunta técnica com modelo(s) claro(s)
-        if pergunta_tecnica and modelos_mencionados:
-            # FLUXO 1.1: Comparação entre DOIS ou mais modelos
-            if len(modelos_mencionados) >= 2:
-                print(f"🔍 FLUXO DETERMINÍSTICO: Comparação entre {', '.join(modelos_mencionados)}", file=sys.stderr)
-                
-                dados_completos = []
-                for modelo in modelos_mencionados:
-                    dados = self.db_tools.get_smartphone_details_and_photos(modelo)
-                    if dados:
-                        # Formata os dados brutos para um texto mais limpo
-                        texto_formatado = self._format_response('get_smartphone_details_and_photos', dados)
-                        dados_completos.append(texto_formatado)
-                
-                if not dados_completos:
-                    return "😕 Não consegui encontrar dados para os modelos solicitados. Pode tentar outros?"
-
-                dados_formatados = '\n---\n'.join(dados_completos)
-                prompt_comparacao = f"""O usuário pediu para comparar: "{user_message}"
-
-Dados dos produtos:
-
----
-{dados_formatados}
----
-
-Sua tarefa: Crie uma tabela comparativa em markdown ou uma lista clara comparando os pontos principais (câmera, processador, preço, etc.) dos produtos. Seja objetivo e use apenas os dados fornecidos."""
-
-                comparacao = self.client.chat.completions.create(
-                    messages=[
-                        {"role": "system", "content": "Você é um especialista que cria comparações claras de produtos."},
-                        {"role": "user", "content": prompt_comparacao}
-                    ],
-                    model=self.model_name,
-                    temperature=0.1,
-                    max_tokens=1024
-                )
-                return comparacao.choices[0].message.content
-
-            # FLUXO 1.2: Pergunta sobre UM modelo
-            else:
-                modelo_mencionado = modelos_mencionados[0]
-                print(f"✅ FLUXO DETERMINÍSTICO: Pergunta técnica sobre {modelo_mencionado}", file=sys.stderr)
-                
-                try:
-                    # Executar ferramenta DIRETAMENTE
-                    dados = self.db_tools.get_smartphone_details_and_photos(modelo_mencionado)
-                    
-                    if dados and len(dados) > 0:
-                        resposta_formatada = self._format_response('get_smartphone_details_and_photos', dados)
-                        
-                        # Agora usar IA apenas para HUMANIZAR a resposta
-                        prompt_humanizar = f"""O usuário perguntou: "{user_message}"
-
-Dados reais do banco de dados:
-{resposta_formatada}
-
-Sua tarefa: Responda de forma AMIGÁVEL e CONVERSACIONAL usando APENAS os dados acima. Não invente nada. Seja breve (máximo 5 linhas)."""
-
-                        humanizacao = self.client.chat.completions.create(
-                            messages=[
-                                {"role": "system", "content": "Você é um vendedor amigável. Use APENAS os dados fornecidos."},
-                                {"role": "user", "content": prompt_humanizar}
-                            ],
-                            model=self.model_name,
-                            temperature=0.3,
-                            max_tokens=300
-                        )
-                        
-                        return humanizacao.choices[0].message.content
-                    
-                    else:
-                        return f"😕 Desculpe, não encontrei dados sobre o {modelo_mencionado} em nosso sistema. Posso te ajudar com outro modelo?"
-                        
-                except Exception as e:
-                    print(f"🐞 Erro no fluxo determinístico: {e}", file=sys.stderr)
-                    return f"🐞 Ocorreu um erro ao buscar dados: {e}"
-        
-        # FLUXO 2: Pergunta técnica SEM modelo claro - Usar IA com tools
-        elif pergunta_tecnica:
-            print("⚠️ FLUXO IA COM TOOLS: Pergunta técnica sem modelo claro", file=sys.stderr)
-            return self._process_with_tools(user_message)
-        
-        # FLUXO 3: Pergunta sobre vendas ou finanças
-        elif any(palavra in user_message_lower for palavra in ['vendido', 'vendas', 'mais vendeu', 'campeão', 'líder', 'top', 'receita', 'faturamento', 'arrecadação']):
-            print("📊 FLUXO VENDAS/FINANÇAS", file=sys.stderr)
-            return self._process_with_tools(user_message)
-        
-        # FLUXO 4: Pergunta genérica/subjetiva - Usar RAG
+    def _answer_features_with_rag(self, model_name: str, tipo: str) -> dict:
+        if not model_name:
+            complemento = "NFC" if tipo == 'pergunta_nfc' else "Dual SIM/eSIM"
+            return {"tipo": "texto", "conteudo": f"Qual modelo você quer confirmar {complemento}?"}
+        pergunta = ""
+        if tipo == 'pergunta_nfc':
+            pergunta = f"{model_name} possui NFC?"
+        elif tipo == 'pergunta_dual_sim':
+            pergunta = f"{model_name} possui Dual SIM ou eSIM?"
         else:
-            print("💬 FLUXO RAG: Pergunta genérica", file=sys.stderr)
-            return self._process_with_rag(user_message)
-
-    def _process_with_tools(self, user_message: str) -> str:
-        """
-        MUDANÇA CRÍTICA 4: Forçar o uso de RAG se a IA não escolher uma ferramenta.
-        """
-        print("🤖 Usando IA para escolher a melhor ferramenta...", file=sys.stderr)
-        
+            pergunta = f"Especificações sobre {model_name}"
         try:
-            response = self.client.chat.completions.create(
-                model=self.model_name,
-                messages=[
-                    {"role": "system", "content": self.system_prompt},
-                    {"role": "user", "content": user_message}
-                ],
-                tools=self.tools,
-                tool_choice="auto",
-                temperature=0.1, # MUDANÇA CRÍTICA 2: Temperatura baixa para consistência
-                max_tokens=1024
-            )
-
-            response_message = response.choices[0].message
-            tool_calls = response_message.tool_calls
-
-            if tool_calls:
-                return self._execute_tool_calls(tool_calls)
-            else:
-                # MUDANÇA CRÍTICA 4: Fallback para RAG
-                print("⚠️ IA não acionou ferramenta. Acionando RAG como fallback.", file=sys.stderr)
-                return self._process_with_rag(user_message)
-
-        except Exception as e:
-            print(f"🐞 Erro ao processar com ferramentas: {e}", file=sys.stderr)
-            return f"🐞 Desculpe, ocorreu um erro ao tentar usar minhas ferramentas: {e}"
-
-    def _execute_tool_calls(self, tool_calls: list) -> str:
-        """Executa as chamadas de ferramentas."""
-        available_tools = {
-            func_name: getattr(self.db_tools, func_name) 
-            for func_name in dir(self.db_tools) 
-            if callable(getattr(self.db_tools, func_name)) and not func_name.startswith("_")
-        }
-        
-        messages.append(response_message)
-
-        for tool_call in tool_calls:
-            function_name = tool_call.function.name
-            try:
-                print(f"🔧 Executando: {function_name}({tool_call.function.arguments})", file=sys.stderr)
-                
-                if function_name not in available_tools:
-                    return f"❌ Erro: Ferramenta '{function_name}' não encontrada."
-
-                function_to_call = available_tools[function_name]
-                function_args = json.loads(tool_call.function.arguments)
-                function_response = function_to_call(**function_args)
-
-                return self._format_response(function_name, function_response)
-
-            except Exception as e:
-                print(f"🐞 Erro ao executar ferramenta: {e}", file=sys.stderr)
-                return f"❌ Erro ao executar {function_name}: {e}"
-
-    def _process_with_rag(self, user_message: str) -> str:
-        """Processa usando RAG para perguntas subjetivas."""
-        try:
-            search_results = self.vector_store.search(user_message, n_results=2)
-            context_docs = search_results.get('documents', [[]])[0]
-            
-            if not context_docs:
-                # Sem contexto RAG, resposta genérica
-                response = self.client.chat.completions.create(
-                    messages=[
-                        {"role": "system", "content": f"Você é Fabio, vendedor de smartphones. Modelos disponíveis: {', '.join(self.modelos_validos)}. Seja breve e amigável."},
-                        {"role": "user", "content": user_message}
-                    ],
-                    model=self.model_name,
-                    temperature=0.7,
-                    max_tokens=300
-                )
-                return response.choices[0].message.content
-            
-            context_str = "\n- ".join(context_docs)
-            rag_prompt = f'''Contexto de documentos:
-- {context_str}
-
-Modelos disponíveis: {', '.join(self.modelos_validos)}
-
-Pergunta: {user_message}
-
-Responda de forma amigável e útil, mas se mencionar qualquer especificação técnica, deixe claro que são informações gerais e que você pode buscar dados precisos se o cliente quiser.'''
-
-            final_response = self.client.chat.completions.create(
-                messages=[
-                    {"role": "system", "content": "Você é um vendedor prestativo."},
-                    {"role": "user", "content": rag_prompt}
-                ],
-                model=self.model_name,
-                temperature=0.7,
-                max_tokens=512
-            )
-            return final_response.choices[0].message.content
-
-        except Exception as e:
-            print(f"🐞 Erro no RAG: {e}", file=sys.stderr)
-            return "Desculpe, tive um problema ao processar sua pergunta. Pode reformular?"
-
+            texto = self.file_search.query(pergunta)
+            texto = texto or f"Sem resposta técnica para {model_name}."
+            return {"tipo": "texto", "conteudo": texto}
+        except Exception:
+            return {"tipo": "texto", "conteudo": f"Sem base técnica carregada para {model_name}."}
 
 def main():
-    try:
-        if len(sys.argv) < 2:
-            print("Erro: Pergunta não fornecida.", file=sys.stderr)
-            sys.exit(1)
-
-        question = sys.argv[1]
-        agent = AIAgent()
-        response = agent.process_message(question)
-        print(response)
-
-    except Exception as e:
-        print(f"Erro inesperado: {e}", file=sys.stderr)
+    if len(sys.argv) < 3:
+        print(json.dumps({'tipo': 'erro', 'conteudo': 'Parâmetros: user_id mensagem'}))
         sys.exit(1)
+    agent = AIAgent()
+    response = agent.process_message(sys.argv[1], sys.argv[2])
+    print(json.dumps(response, ensure_ascii=False))
 
 if __name__ == "__main__":
     main()

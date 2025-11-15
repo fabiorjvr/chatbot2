@@ -1,12 +1,8 @@
-fastapi
-uvicorn
 Flask
-psycopg2-binary
-google-generativeai
 python-dotenv
 requests
-Flask
-chromadb
-sentence-transformers
-transformers
-torch
+Pillow
+pytesseract
+opencv-python-headless
+beautifulsoup4
+google-genai

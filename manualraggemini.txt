@@ -1,0 +1,407 @@
+
+Mini aula: como usar RAG da Gemini (File Search)
+1.1. O que é RAG no contexto da Gemini?
+
+RAG (Retrieval Augmented Generation) = “perguntar pro modelo, mas com base em documentos seus”.
+
+Na Gemini API isso ficou MUITO simples com o File Search:
+
+Você cria uma FileSearchStore (uma “caixa” onde ficam os embeddings dos seus arquivos).
+
+Faz upload do arquivo (PDF, TXT, etc.) direto para essa store.
+
+A API:
+
+divide o arquivo em chunks (pedaços menores),
+
+gera embeddings desses chunks,
+
+indexa tudo.
+
+Quando você chama generate_content e passa o File Search como ferramenta,
+
+a Gemini transforma a pergunta em embedding,
+
+faz busca semântica nessa store,
+
+traz só os trechos relevantes como contexto,
+
+e responde usando isso como base. 
+blog.google
++1
+
+Você não precisa montar banco vetorial, cuidar de chunking na unha, nem chamar a API de embeddings manualmente se usar File Search — ele já usa o modelo de embedding da Gemini por baixo. 
+Medium
++1
+
+1.2. Diferença entre usar Embeddings API e File Search
+
+Embeddings API (https://ai.google.dev/api/embeddings
+)
+
+Você chama o endpoint de embeddings,
+
+guarda os vetores num banco seu (Pinecone, Postgres + pgvector, etc.),
+
+implementa busca vetorial / RAG manualmente.
+
+File Search (recomendado hoje pra maioria dos casos):
+
+Você só faz upload dos arquivos,
+
+a Google cuida de embeddings, indexação e busca,
+
+você só consome via generate_content com ferramenta file_search.
+
+Ou seja:
+
+Seu objetivo “passar dados para a API de embeddings” hoje é bem atendido subindo o PDF direto no File Search, que já faz isso internamente pra você.
+
+Se um dia você quiser montar seu próprio RAG (com seu banco vetorial), aí sim usaria o endpoint de embeddings manualmente. 
+Google AI for Developers
++1
+
+1.3. Fluxo completo com File Search (exemplo em Python)
+
+Baseado na documentação mais nova da Gemini API + File Search: 
+Analytics Vidhya
++1
+
+from google import genai
+from google.genai import types
+import time
+import os
+
+# 1) Configurar API key
+os.environ["GOOGLE_API_KEY"] = "SUA_API_KEY_AQUI"
+
+client = genai.Client()
+
+# 2) Criar uma File Search Store (ex: para celulares)
+file_search_store = client.file_search_stores.create(
+    config={
+        "display_name": "celulares-fichas-tecnicas"
+    }
+)
+
+print("FileSearchStore criada:", file_search_store.name)
+
+# 3) Upload + import do PDF (o que eu gerei pra você)
+operation = client.file_search_stores.upload_to_file_search_store(
+    file="/caminho/para/fichas_tecnicas_galaxy_s24_ultra_poco_x7_pro.pdf",
+    file_search_store_name=file_search_store.name,
+    config={
+        "display_name": "Fichas tecnicas S24 Ultra e POCO X7 Pro",
+        # se quiser, aqui dá pra pôr chunking_config customizado
+    },
+)
+
+# 4) Esperar o processamento (indexação)
+while not operation.done:
+    time.sleep(5)
+    operation = client.operations.get(operation.name)
+
+print("Arquivo indexado com sucesso!")
+
+# 5) Fazer uma pergunta usando RAG (File Search Tool)
+response = client.models.generate_content(
+    model="gemini-2.5-flash",
+    contents="Compare a bateria, câmera e processador do Galaxy S24 Ultra e do POCO X7 Pro.",
+    config=types.GenerateContentConfig(
+        tools=[
+            types.Tool(
+                file_search=types.FileSearch(
+                    file_search_store_names=[file_search_store.name]
+                )
+            )
+        ]
+    )
+)
+
+print(response.text)
+
+
+Se quiser deixar ainda mais “profissional”:
+
+Adicionar metadata na importação do arquivo (ex: {"key": "tipo", "string_value": "smartphone"}) e depois filtrar por isso no metadata_filter. 
+Analytics Vidhya
+
+Configurar chunking_config se quiser controlar tamanho dos pedaços (número de tokens por chunk, overlap etc.) — útil se seus textos forem muito grandes. 
+Analytics Vidhya
++1
+
+1.4. Como preparar os arquivos para RAG (boas práticas)
+
+Você está fazendo do jeito certo: criar um PDF bem organizado. Algumas dicas:
+
+Títulos e seções bem claros
+
+Ex.: “1. SAMSUNG GALAXY S24 ULTRA”, “2. XIAOMI POCO X7 PRO 5G”.
+
+Facilita o modelo entender que são duas entidades distintas.
+
+Campos em formato chave:valor
+
+“Memória: RAM 12 GB, Armazenamento 1 TB, sem expansão”
+
+“Bateria: 5000 mAh, carga 45 W”
+
+Evitar parágrafos gigantes
+
+Use listas e linhas curtas (isso ajuda a divisão em chunks da File Search).
+
+Idioma
+
+Se você vai perguntar em português, pode manter tudo em português (o modelo entende tranquilo).
+
+Se quiser RAG multilíngue, pode colocar seções em PT/EN no mesmo PDF.
+
+Arquivos separados vs. tudo junto
+
+Você pode:
+
+Ter um PDF por celular (mais granular); ou
+
+Um PDF com vários modelos, como estamos fazendo agora.
+
+A File Search aguenta os dois cenários. Se o catálogo crescer, talvez valha separar por categoria (“linha Galaxy”, “linha POCO”, etc.).
+Pesquisa de arquivos
+
+content_copy
+
+
+A API Gemini permite a geração aumentada por recuperação (RAG) com a ferramenta Pesquisa de arquivos. A Pesquisa de arquivos importa, divide e indexa seus dados para permitir a recuperação rápida de informações relevantes com base no comando de um usuário. Essas informações são fornecidas como contexto ao modelo, permitindo que ele dê respostas mais precisas e relevantes.
+
+É possível usar a API uploadToFileSearchStore para fazer upload direto de um arquivo na sua loja da Pesquisa de arquivos ou fazer upload separado e depois importFile se quiser criar o arquivo ao mesmo tempo.
+
+Fazer upload diretamente para a loja da Pesquisa de arquivos
+Este exemplo mostra como fazer upload direto de um arquivo para um armazenamento de arquivos:
+
+Python
+JavaScript
+REST
+
+from google import genai
+from google.genai import types
+import time
+
+client = genai.Client()
+
+# Create the File Search store with an optional display name
+file_search_store = client.file_search_stores.create(config={'display_name': 'your-fileSearchStore-name'})
+
+# Upload and import a file into the File Search store, supply a file name which will be visible in citations
+operation = client.file_search_stores.upload_to_file_search_store(
+  file='sample.txt',
+  file_search_store_name=file_search_store.name,
+  config={
+      'display_name' : 'display-file-name',
+  }
+)
+
+# Wait until import is complete
+while not operation.done:
+    time.sleep(5)
+    operation = client.operations.get(operation)
+
+# Ask a question about the file
+response = client.models.generate_content(
+    model="gemini-2.5-flash",
+    contents="""Can you tell me about Robert Graves""",
+    config=types.GenerateContentConfig(
+        tools=[
+            file_search=(
+                  file_search_store_names=[file_search_store.name]
+            )
+        ]
+    )
+)
+
+print(response.text)
+Consulte a referência da API para uploadToFileSearchStore para mais informações.
+
+Como importar arquivos
+Como alternativa, faça upload de um arquivo e importe-o para o armazenamento de arquivos:
+
+Python
+JavaScript
+REST
+
+from google import genai
+from google.genai import types
+import time
+
+client = genai.Client()
+
+# Upload the file using the Files API, supply a file name which will be visible in citations
+sample_file = client.files.upload(file='sample.txt', config={'name': 'display_file_name'})
+
+# Create the File Search store with an optional display name
+file_search_store = client.file_search_stores.create(config={'display_name': 'your-fileSearchStore-name'})
+
+# Import the file into the File Search store
+operation = client.file_search_stores.import_file(
+    file_search_store_name=file_search_store.name,
+    file_name=sample_file.name
+)
+
+# Wait until import is complete
+while not operation.done:
+    time.sleep(5)
+    operation = client.operations.get(operation)
+
+# Ask a question about the file
+response = client.models.generate_content(
+    model="gemini-2.5-flash",
+    contents="""Can you tell me about Robert Graves""",
+    config=types.GenerateContentConfig(
+        tools=[
+            file_search=(
+                  file_search_store_names=[file_search_store.name]
+            )
+        ]
+    )
+)
+
+print(response.text)
+Consulte a referência da API para importFile para mais informações.
+
+Configuração de divisão
+Quando você importa um arquivo para uma loja de pesquisa de arquivos, ele é automaticamente dividido em partes, incorporado, indexado e enviado para a loja. Se você precisar de mais controle sobre a estratégia de divisão em partes, especifique uma configuração chunking_config para definir um número máximo de tokens por parte e um número máximo de tokens sobrepostos.
+
+Python
+JavaScript
+REST
+
+# Upload and import and upload the file into the File Search store with a custom chunking configuration
+operation = client.file_search_stores.upload_to_file_search_store(
+    file_search_store_name=file_search_store.name,
+    file_name=sample_file.name,
+    config={
+        'chunking_config': {
+          'white_space_config': {
+            'max_tokens_per_chunk': 200,
+            'max_overlap_tokens': 20
+          }
+        }
+    }
+)
+Para usar o armazenamento da Pesquisa de arquivos, transmita-o como uma ferramenta para o método generateContent, conforme mostrado nos exemplos de Upload e Importação.
+
+Como funciona
+A Pesquisa de arquivos usa uma técnica chamada pesquisa semântica para encontrar informações relevantes para o comando do usuário. Ao contrário da pesquisa tradicional por palavras-chave, a pesquisa semântica entende o significado e o contexto da sua consulta.
+
+Quando você importa um arquivo, ele é convertido em representações numéricas chamadas embeddings, que capturam o significado semântico do texto. Esses embeddings são armazenados em um banco de dados especializado da Pesquisa de arquivos. Quando você faz uma consulta, ela também é convertida em um embedding. Em seguida, o sistema realiza uma pesquisa de arquivos para encontrar os trechos de documentos mais semelhantes e relevantes no repositório de pesquisa de arquivos.
+
+Confira um resumo do processo para usar a API File Search uploadToFileSearchStore:
+
+Criar um repositório de pesquisa de arquivos: um repositório de pesquisa de arquivos contém os dados processados dos seus arquivos. É o contêiner persistente para os embeddings em que a pesquisa semântica vai operar.
+
+Fazer upload de um arquivo e importar para um repositório da Pesquisa de arquivos: faça upload de um arquivo e importe os resultados para o repositório da Pesquisa de arquivos ao mesmo tempo. Isso cria um objeto File temporário, que é uma referência ao seu documento bruto. Esses dados são divididos em partes, convertidos em embeddings da Pesquisa de arquivos e indexados. O objeto File é excluído após 48 horas, enquanto os dados importados para o repositório da Pesquisa de arquivos são armazenados indefinidamente até que você os exclua.
+
+Consulta com a Pesquisa de arquivos: por fim, use a ferramenta FileSearch em uma chamada generateContent. Na configuração da ferramenta, especifique um FileSearchRetrievalResource, que aponta para o FileSearchStore que você quer pesquisar. Isso informa ao modelo para realizar uma pesquisa semântica no repositório específico da Pesquisa de arquivos e encontrar informações relevantes para embasar a resposta.
+
+O processo de indexação e consulta da Pesquisa de arquivos
+O processo de indexação e consulta da Pesquisa de arquivos
+Neste diagrama, a linha pontilhada de Documentos para Modelo de incorporação (usando gemini-embedding-001) representa a API uploadToFileSearchStore (ignorando o Armazenamento de arquivos). Caso contrário, usar a API Files para criar e importar arquivos separadamente move o processo de indexação de Documentos para Armazenamento de arquivos e, em seguida, para Modelo de incorporação.
+
+Armazenamentos da Pesquisa de arquivos
+Um repositório de pesquisa de arquivos é um contêiner para os embeddings de documentos. Os arquivos brutos enviados pela API File são excluídos após 48 horas, mas os dados importados para um repositório da Pesquisa de arquivos são armazenados indefinidamente até que você os exclua manualmente. Você pode criar várias lojas de pesquisa de arquivos para organizar seus documentos. A API FileSearchStore permite criar, listar, receber e excluir para gerenciar seus armazenamentos de pesquisa de arquivos. Os nomes de armazenamento da Pesquisa de arquivos têm escopo global.
+
+Confira alguns exemplos de como gerenciar suas lojas de pesquisa de arquivos:
+
+Python
+JavaScript
+REST
+
+# Create a File Search store (including optional display_name for easier reference)
+file_search_store = client.file_search_stores.create(config={'display_name': 'my-file_search-store-123'})
+
+# List all your File Search stores
+for file_search_store in client.file_search_stores.list():
+    print(file_search_store)
+
+# Get a specific File Search store by name
+my_file_search_store = client.file_search_stores.get(name='fileSearchStores/my-file_search-store-123')
+
+# Delete a File Search store
+client.file_search_stores.delete(name='fileSearchStores/my-file_search-store-123', config={'force': True})
+A referência da API File Search Documents para métodos e campos relacionados ao gerenciamento de documentos nos seus repositórios de arquivos.
+
+Metadados do arquivo
+É possível adicionar metadados personalizados aos arquivos para ajudar a filtrá-los ou fornecer mais contexto. Os metadados são um conjunto de pares de chave-valor.
+
+Python
+JavaScript
+REST
+
+# Import the file into the File Search store with custom metadata
+op = client.file_search_stores.import_file(
+    file_search_store_name=file_search_store.name,
+    file_name=sample_file.name,
+    custom_metadata=[
+        {"key": "author", "string_value": "Robert Graves"},
+        {"key": "year", "numeric_value": 1934}
+    ]
+)
+Isso é útil quando você tem vários documentos em um repositório da Pesquisa de arquivos e quer pesquisar apenas um subconjunto deles.
+
+Python
+JavaScript
+REST
+
+# Use the metadata filter to search within a subset of documents
+response = client.models.generate_content(
+    model="gemini-2.5-flash",
+    contents="Tell me about the book 'I, Claudius'",
+    config=types.GenerateContentConfig(
+        tools=[
+            types.Tool(
+                file_search=types.FileSearch(
+                    file_search_store_names=[file_search_store.name],
+                    metadata_filter="author=Robert Graves",
+                )
+            )
+        ]
+    )
+)
+
+print(response.text)
+As orientações sobre a implementação da sintaxe de filtro de lista para metadata_filter podem ser encontradas em google.aip.dev/160.
+
+Citações
+Ao usar a Pesquisa de arquivos, a resposta do modelo pode incluir citações que especificam quais partes dos documentos enviados foram usadas para gerar a resposta. Isso ajuda na checagem de fatos e na verificação.
+
+Você pode acessar as informações de citação pelo atributo grounding_metadata da resposta.
+
+Python
+JavaScript
+
+print(response.candidates[0].grounding_metadata)
+Modelos compatíveis
+Os seguintes modelos são compatíveis com a Pesquisa de arquivos:
+
+gemini-2.5-pro
+gemini-2.5-flash
+Tipos de arquivo compatíveis
+A Pesquisa de arquivos é compatível com vários formatos de arquivo, listados nas seções a seguir.
+
+Tipos de arquivo de aplicativo
+Tipos de arquivo de texto
+Limites de taxas
+A API File Search tem os seguintes limites para garantir a estabilidade do serviço:
+
+Tamanho máximo do arquivo / limite por documento: 100 MB
+Tamanho total dos armazenamentos da Pesquisa de arquivos do projeto (com base no nível do usuário):
+Sem custo financeiro: 1 GB
+Nível 1: 10 GB
+Nível 2: 100 GB
+Nível 3: 1 TB
+Recomendação: limite o tamanho de cada loja de pesquisa de arquivos para menos de 20 GB e garanta latências de recuperação ideais.
+Observação: o limite de tamanho do armazenamento da Pesquisa de arquivos é calculado no back-end com base no tamanho da entrada mais os embeddings gerados e armazenados com ela. Normalmente, esse valor é aproximadamente três vezes o tamanho dos dados de entrada.
+Preços
+Os desenvolvedores são cobrados por incorporações no momento da indexação com base nos preços de incorporação atuais (US$ 0,15 por 1 milhão de tokens).
+O armazenamento não tem custo financeiro.
+Os embeddings de tempo de consulta não têm custo financeiro.
+Os tokens de documentos recuperados são cobrados como tokens de contexto normais.
+A seguir

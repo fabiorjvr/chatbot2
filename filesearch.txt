@@ -1,0 +1,433 @@
+File Search Stores
+
+
+A API File Search oferece um serviço hospedado de respostas a perguntas para criar sistemas de geração aumentada de recuperação (RAG) usando a infraestrutura do Google.
+
+Método: media.uploadToFileSearchStore
+Faz upload de dados para um FileSearchStore, pré-processa e divide em partes antes de armazenar em um documento do FileSearchStore.
+
+Endpoint
+URI de upload, para solicitações de upload de mídia:
+post
+https://generativelanguage.googleapis.com/upload/v1beta/{fileSearchStoreName=fileSearchStores/*}:uploadToFileSearchStore
+URI de metadados, para solicitações somente de metadados:
+post
+https://generativelanguage.googleapis.com/v1beta/{fileSearchStoreName=fileSearchStores/*}:uploadToFileSearchStore
+Parâmetros de caminho
+fileSearchStoreName
+string
+Obrigatório. Imutável. O nome do FileSearchStore em que o arquivo será enviado. Exemplo: fileSearchStores/my-file-search-store-123. Ele assume a forma fileSearchStores/{filesearchstore}.
+
+Corpo da solicitação
+O corpo da solicitação contém dados com a seguinte estrutura:
+
+Campos
+displayName
+string
+Opcional. Nome de exibição do documento criado.
+
+customMetadata[]
+object (CustomMetadata)
+Metadados personalizados a serem associados aos dados.
+
+chunkingConfig
+object (ChunkingConfig)
+Opcional. Configuração para informar ao serviço como dividir os dados em partes. Se não for fornecido, o serviço vai usar parâmetros padrão.
+
+mimeType
+string
+Opcional. Tipo MIME dos dados. Se não for fornecido, ele será inferido do conteúdo enviado.
+
+Corpo da resposta
+Esta é uma cópia de google.longrunning.Operation. Precisamos copiar porque, para interagir com o Scotty, é necessário adicionar um campo específico que não pode ser adicionado no proto de operação de nível superior.
+
+Se bem-sucedido, o corpo da resposta incluirá dados com a estrutura a seguir:
+
+Campos
+name
+string
+O nome atribuído pelo servidor, que é exclusivo somente no mesmo serviço que o retorna originalmente. Se você usar o mapeamento padrão de HTTP, name precisa ser um nome de recurso que termine com operations/{unique_id}.
+
+metadata
+object
+Metadados específicos do serviço associados à operação. Eles geralmente contêm informações sobre o progresso e metadados comuns, como a hora da criação. Em alguns serviços, esses metadados talvez não sejam fornecidos. Em qualquer método que retorna uma operação de longa duração, o tipo de metadados, se houver, deve ser documentado.
+
+Um objeto contendo campos de um tipo arbitrário. Um campo adicional "@type" contém uma URI que identifica o tipo. Exemplo: { "id": 1234, "@type": "types.example.com/standard/id" }.
+
+done
+boolean
+Se o valor for false, significa que a operação ainda está em andamento. Se for true, a operação será concluída e error ou response estarão disponíveis.
+
+result
+Union type
+O resultado da operação, que pode ser um error ou uma response válida. Se done == false, nem error ou response estão definidos. Se done == true, será possível definir exatamente um entre error ou response. Alguns serviços podem não fornecer o resultado. result pode ser apenas um dos seguintes:
+error
+object (Status)
+Resultado do erro da operação em caso de falha ou cancelamento.
+
+response
+object
+A resposta normal e bem-sucedida da operação. Se o método original não retornar dados em caso de êxito, como Delete, a resposta será google.protobuf.Empty. Se o método original for Get/Create/Update padrão, a resposta será o recurso. Para outros métodos, a resposta precisa ser do tipo XxxResponse, em que Xxx é o nome do método original. Por exemplo, se o nome do método original for TakeSnapshot(), o tipo inferido de resposta será TakeSnapshotResponse.
+
+Um objeto contendo campos de um tipo arbitrário. Um campo adicional "@type" contém uma URI que identifica o tipo. Exemplo: { "id": 1234, "@type": "types.example.com/standard/id" }.
+
+Representação JSON
+
+{
+  "name": string,
+  "metadata": {
+    "@type": string,
+    field1: ...,
+    ...
+  },
+  "done": boolean,
+
+  // result
+  "error": {
+    object (Status)
+  },
+  "response": {
+    "@type": string,
+    field1: ...,
+    ...
+  }
+  // Union type
+}
+Método: fileSearchStores.create
+Cria um FileSearchStore vazio.
+
+Endpoint
+post
+https://generativelanguage.googleapis.com/v1beta/fileSearchStores
+
+Corpo da solicitação
+O corpo da solicitação contém uma instância de FileSearchStore.
+
+Campos
+displayName
+string
+Opcional. O nome de exibição legível para o FileSearchStore. O nome de exibição não pode ter mais de 512 caracteres, incluindo espaços. Exemplo: "Documentos no Semantic Retriever"
+
+Corpo da resposta
+Se a solicitação for bem-sucedida, o corpo da resposta incluirá uma instância de FileSearchStore.
+
+Método: fileSearchStores.delete
+Exclui um FileSearchStore.
+
+Endpoint
+delete
+https://generativelanguage.googleapis.com/v1beta/{name=fileSearchStores/*}
+
+Parâmetros de caminho
+name
+string
+Obrigatório. O nome do recurso do FileSearchStore. Exemplo: fileSearchStores/my-file-search-store-123. Ele assume a forma fileSearchStores/{filesearchstore}.
+
+Parâmetros de consulta
+force
+boolean
+Opcional. Se definido como verdadeiro, todos os Documents e objetos relacionados a esse FileSearchStore também serão excluídos.
+
+Se for "false" (o padrão), um erro FAILED_PRECONDITION será retornado se FileSearchStore contiver algum Document.
+
+Corpo da solicitação
+O corpo da solicitação precisa estar vazio.
+
+Corpo da resposta
+Se não houver nenhum problema, o corpo da resposta será um objeto JSON vazio.
+
+Método: fileSearchStores.get
+Recebe informações sobre um FileSearchStore específico.
+
+Endpoint
+get
+https://generativelanguage.googleapis.com/v1beta/{name=fileSearchStores/*}
+
+Parâmetros de caminho
+name
+string
+Obrigatório. O nome do FileSearchStore. Exemplo: fileSearchStores/my-file-search-store-123. Ele assume a forma fileSearchStores/{filesearchstore}.
+
+Corpo da solicitação
+O corpo da solicitação precisa estar vazio.
+
+Corpo da resposta
+Se a solicitação for bem-sucedida, o corpo da resposta conterá uma instância de FileSearchStore.
+
+Método: fileSearchStores.list
+Lista todos os FileSearchStores pertencentes ao usuário.
+
+Endpoint
+get
+https://generativelanguage.googleapis.com/v1beta/fileSearchStores
+
+Parâmetros de consulta
+pageSize
+integer
+Opcional. O número máximo de FileSearchStores a serem retornados (por página). O serviço pode retornar menos FileSearchStores.
+
+Se não for especificado, no máximo 10 FileSearchStores serão retornados. O limite máximo é de 20 FileSearchStores por página.
+
+pageToken
+string
+Opcional. Um token de página recebido de uma chamada fileSearchStores.list anterior.
+
+Forneça o nextPageToken retornado na resposta como um argumento para a próxima solicitação e recupere a página seguinte.
+
+Ao paginar, todos os outros parâmetros fornecidos para fileSearchStores.list precisam corresponder à chamada que forneceu o token da página.
+
+Corpo da solicitação
+O corpo da solicitação precisa estar vazio.
+
+Corpo da resposta
+Resposta de fileSearchStores.list contendo uma lista paginada de FileSearchStores. Os resultados são classificados por fileSearchStore.create_time crescente.
+
+Se bem-sucedido, o corpo da resposta incluirá dados com a estrutura a seguir:
+
+Campos
+fileSearchStores[]
+object (FileSearchStore)
+Os ragStores retornados.
+
+nextPageToken
+string
+Um token, que pode ser enviado como pageToken para recuperar a próxima página. Se esse campo for omitido, não haverá mais páginas.
+
+Representação JSON
+
+{
+  "fileSearchStores": [
+    {
+      object (FileSearchStore)
+    }
+  ],
+  "nextPageToken": string
+}
+Método: fileSearchStores.importFile
+Importa um File do serviço de arquivos para um FileSearchStore.
+
+Endpoint
+post
+https://generativelanguage.googleapis.com/v1beta/{fileSearchStoreName=fileSearchStores/*}:importFile
+
+Parâmetros de caminho
+fileSearchStoreName
+string
+Obrigatório. Imutável. O nome do FileSearchStore em que o arquivo será importado. Exemplo: fileSearchStores/my-file-search-store-123. Ele assume a forma fileSearchStores/{filesearchstore}.
+
+Corpo da solicitação
+O corpo da solicitação contém dados com a seguinte estrutura:
+
+Campos
+fileName
+string
+Obrigatório. O nome do File a ser importado. Exemplo: files/abc-123
+
+customMetadata[]
+object (CustomMetadata)
+Metadados personalizados a serem associados ao arquivo.
+
+chunkingConfig
+object (ChunkingConfig)
+Opcional. Configuração para informar ao serviço como dividir o arquivo em partes. Se não for fornecido, o serviço vai usar parâmetros padrão.
+
+Corpo da resposta
+Se a solicitação for bem-sucedida, o corpo da resposta conterá uma instância de Operation.
+
+Recurso REST: fileSearchStores.operations
+Recurso: operação
+Este recurso representa uma operação de longa duração resultante de uma chamada de API de rede.
+
+Campos
+name
+string
+O nome atribuído pelo servidor, que é exclusivo somente no mesmo serviço que o retorna originalmente. Se você usar o mapeamento padrão de HTTP, name precisa ser um nome de recurso que termine com operations/{unique_id}.
+
+metadata
+object
+Metadados específicos do serviço associados à operação. Eles geralmente contêm informações sobre o progresso e metadados comuns, como a hora da criação. Em alguns serviços, esses metadados talvez não sejam fornecidos. Em qualquer método que retorna uma operação de longa duração, o tipo de metadados, se houver, deve ser documentado.
+
+Um objeto contendo campos de um tipo arbitrário. Um campo adicional "@type" contém uma URI que identifica o tipo. Exemplo: { "id": 1234, "@type": "types.example.com/standard/id" }.
+
+done
+boolean
+Se o valor for false, significa que a operação ainda está em andamento. Se for true, a operação será concluída e error ou response estarão disponíveis.
+
+result
+Union type
+O resultado da operação, que pode ser um error ou uma response válida. Se done == false, nem error ou response estão definidos. Se done == true, será possível definir exatamente um entre error ou response. Alguns serviços podem não fornecer o resultado. result pode ser apenas um dos seguintes:
+error
+object (Status)
+Resultado do erro da operação em caso de falha ou cancelamento.
+
+response
+object
+A resposta normal e bem-sucedida da operação. Se o método original não retornar dados em caso de êxito, como Delete, a resposta será google.protobuf.Empty. Se o método original for Get/Create/Update padrão, a resposta será o recurso. Para outros métodos, a resposta precisa ser do tipo XxxResponse, em que Xxx é o nome do método original. Por exemplo, se o nome do método original for TakeSnapshot(), o tipo inferido de resposta será TakeSnapshotResponse.
+
+Um objeto contendo campos de um tipo arbitrário. Um campo adicional "@type" contém uma URI que identifica o tipo. Exemplo: { "id": 1234, "@type": "types.example.com/standard/id" }.
+
+Representação JSON
+
+{
+  "name": string,
+  "metadata": {
+    "@type": string,
+    field1: ...,
+    ...
+  },
+  "done": boolean,
+
+  // result
+  "error": {
+    object (Status)
+  },
+  "response": {
+    "@type": string,
+    field1: ...,
+    ...
+  }
+  // Union type
+}
+Método: fileSearchStores.operations.get
+Recebe o estado mais recente de uma operação de longa duração. Os clientes usam este método para pesquisar o resultado da operação em intervalos, conforme recomendado pelo serviço da API.
+
+Endpoint
+get
+https://generativelanguage.googleapis.com/v1beta/{name=fileSearchStores/*/operations/*}
+
+Parâmetros de caminho
+name
+string
+O nome do recurso de operação. Ele tem o formato fileSearchStores/{filesearchstore}/operations/{operation}.
+
+Corpo da solicitação
+O corpo da solicitação precisa estar vazio.
+
+Corpo da resposta
+Se a solicitação for bem-sucedida, o corpo da resposta conterá uma instância de Operation.
+
+Recurso REST: fileSearchStores.upload.operations
+Recurso: operação
+Este recurso representa uma operação de longa duração resultante de uma chamada de API de rede.
+
+Campos
+name
+string
+O nome atribuído pelo servidor, que é exclusivo somente no mesmo serviço que o retorna originalmente. Se você usar o mapeamento padrão de HTTP, name precisa ser um nome de recurso que termine com operations/{unique_id}.
+
+metadata
+object
+Metadados específicos do serviço associados à operação. Eles geralmente contêm informações sobre o progresso e metadados comuns, como a hora da criação. Em alguns serviços, esses metadados talvez não sejam fornecidos. Em qualquer método que retorna uma operação de longa duração, o tipo de metadados, se houver, deve ser documentado.
+
+Um objeto contendo campos de um tipo arbitrário. Um campo adicional "@type" contém uma URI que identifica o tipo. Exemplo: { "id": 1234, "@type": "types.example.com/standard/id" }.
+
+done
+boolean
+Se o valor for false, significa que a operação ainda está em andamento. Se for true, a operação será concluída e error ou response estarão disponíveis.
+
+result
+Union type
+O resultado da operação, que pode ser um error ou uma response válida. Se done == false, nem error ou response estão definidos. Se done == true, será possível definir exatamente um entre error ou response. Alguns serviços podem não fornecer o resultado. result pode ser apenas um dos seguintes:
+error
+object (Status)
+Resultado do erro da operação em caso de falha ou cancelamento.
+
+response
+object
+A resposta normal e bem-sucedida da operação. Se o método original não retornar dados em caso de êxito, como Delete, a resposta será google.protobuf.Empty. Se o método original for Get/Create/Update padrão, a resposta será o recurso. Para outros métodos, a resposta precisa ser do tipo XxxResponse, em que Xxx é o nome do método original. Por exemplo, se o nome do método original for TakeSnapshot(), o tipo inferido de resposta será TakeSnapshotResponse.
+
+Um objeto contendo campos de um tipo arbitrário. Um campo adicional "@type" contém uma URI que identifica o tipo. Exemplo: { "id": 1234, "@type": "types.example.com/standard/id" }.
+
+Representação JSON
+
+{
+  "name": string,
+  "metadata": {
+    "@type": string,
+    field1: ...,
+    ...
+  },
+  "done": boolean,
+
+  // result
+  "error": {
+    object (Status)
+  },
+  "response": {
+    "@type": string,
+    field1: ...,
+    ...
+  }
+  // Union type
+}
+Método: fileSearchStores.upload.operations.get
+Recebe o estado mais recente de uma operação de longa duração. Os clientes usam este método para pesquisar o resultado da operação em intervalos, conforme recomendado pelo serviço da API.
+
+Endpoint
+get
+https://generativelanguage.googleapis.com/v1beta/{name=fileSearchStores/*/upload/operations/*}
+
+Parâmetros de caminho
+name
+string
+O nome do recurso de operação. Ele tem o formato fileSearchStores/{filesearchstore}/upload/operations/{operation}.
+
+Corpo da solicitação
+O corpo da solicitação precisa estar vazio.
+
+Corpo da resposta
+Se a solicitação for bem-sucedida, o corpo da resposta conterá uma instância de Operation.
+
+Recurso REST: fileSearchStores
+Recurso: FileSearchStore
+Um FileSearchStore é uma coleção de Documents.
+
+Campos
+name
+string
+Apenas saída. Imutável. Identificador. O nome do recurso FileSearchStore. É um ID (nome sem o prefixo "fileSearchStores/") que pode conter até 40 caracteres alfanuméricos minúsculos ou traços (-). É somente saída. O nome exclusivo será derivado de displayName com um sufixo aleatório de 12 caracteres. Exemplo: fileSearchStores/my-awesome-file-search-store-123a456b789c. Se displayName não for fornecido, o nome será gerado aleatoriamente.
+
+displayName
+string
+Opcional. O nome de exibição legível para o FileSearchStore. O nome de exibição não pode ter mais de 512 caracteres, incluindo espaços. Exemplo: "Documentos no Semantic Retriever"
+
+createTime
+string (Timestamp format)
+Apenas saída. O carimbo de data/hora de quando o FileSearchStore foi criado.
+
+Usa o padrão RFC 3339, em que a saída gerada é sempre convertida em Z e tem 0, 3, 6 ou 9 dígitos fracionários. Além de "Z", outros ajustes também são aceitos. Exemplos: "2014-10-02T15:01:23Z", "2014-10-02T15:01:23.045123456Z" ou "2014-10-02T15:01:23+05:30".
+
+updateTime
+string (Timestamp format)
+Apenas saída. O carimbo de data/hora da última atualização do FileSearchStore.
+
+Usa o padrão RFC 3339, em que a saída gerada é sempre convertida em Z e tem 0, 3, 6 ou 9 dígitos fracionários. Além de "Z", outros ajustes também são aceitos. Exemplos: "2014-10-02T15:01:23Z", "2014-10-02T15:01:23.045123456Z" ou "2014-10-02T15:01:23+05:30".
+
+activeDocumentsCount
+string (int64 format)
+Apenas saída. O número de documentos no FileSearchStore que estão ativos e prontos para recuperação.
+
+pendingDocumentsCount
+string (int64 format)
+Apenas saída. O número de documentos no FileSearchStore que estão sendo processados.
+
+failedDocumentsCount
+string (int64 format)
+Apenas saída. O número de documentos no FileSearchStore que não foram processados.
+
+sizeBytes
+string (int64 format)
+Apenas saída. O tamanho dos bytes brutos ingeridos no FileSearchStore. Esse é o tamanho total de todos os documentos no FileSearchStore.
+
+Representação JSON
+
+{
+  "name": string,
+  "displayName": string,
+  "createTime": string,
+  "updateTime": string,
+  "activeDocumentsCount": string,
+  "pendingDocumentsCount": string,
+  "failedDocumentsCount": string,
+  "sizeBytes": string
+}

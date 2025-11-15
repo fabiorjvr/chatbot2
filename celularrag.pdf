@@ -1,0 +1,327 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Count 3 /Kids [ 3 0 R 4 0 R 5 0 R ] >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 6 0 R /Resources << /Font << /F1 9 0 R >> >> >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 7 0 R /Resources << /Font << /F1 9 0 R >> >> >>
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 8 0 R /Resources << /Font << /F1 9 0 R >> >> >>
+endobj
+6 0 obj
+<< /Length 2392 >>
+stream
+BT
+/F1 10 Tf
+14 TL
+40 800 Td
+(FICHAS TECNICAS DE SMARTPHONES PARA RAG \(GEMINI FILE SEARCH\)) Tj
+T*
+(Documento preparado para uso em sistemas de RAG com a Gemini API \(File Search / Embeddings\).) Tj
+T*
+() Tj
+T*
+(=== Motorola Edge 60 Pro ===) Tj
+T*
+(Nome comercial: Motorola Edge 60 Pro) Tj
+T*
+(Marca: Motorola) Tj
+T*
+(Modelo: Edge 60 Pro) Tj
+T*
+(Sistema operacional: Android 15) Tj
+T*
+(Preco de referencia \(Brasil\): R$ 2.496) Tj
+T*
+(Rede / conectividade principal: Dual Sim, 5G) Tj
+T*
+(Processador \(CPU\): 8 core, ate 2,7 GHz) Tj
+T*
+(Armazenamento interno: 512 GB internos \(sem expansao\)) Tj
+T*
+(Memoria expansivel \(microSD\): Nao) Tj
+T*
+(GPS: SIM) Tj
+T*
+(Display: 6,7" com resolucao 2712 x 1220 pixels) Tj
+T*
+(Camera traseira principal: 50 MP, fotos ate 8165 x 6124 pixels) Tj
+T*
+(Video \(resolucao maxima\): 4K \(3840 x 2160 pixels\)) Tj
+T*
+(Obs: Smartphone avancado com foco em multimidia.) Tj
+T*
+(Obs: Aproximadamente 8,2 mm de espessura \(corpo fino\).) Tj
+T*
+() Tj
+T*
+(=== Samsung Galaxy S25 Ultra ===) Tj
+T*
+(Nome comercial: Samsung Galaxy S25 Ultra) Tj
+T*
+(Marca: Samsung) Tj
+T*
+(Modelo: Galaxy S25 Ultra) Tj
+T*
+(Sistema operacional: Android 15) Tj
+T*
+(Preco de referencia \(Brasil\): R$ 6.301) Tj
+T*
+(Rede / conectividade principal: Dual Sim, 5G, Wi?Fi, Bluetooth, GPS) Tj
+T*
+(Processador \(CPU\): 8 core, ate 3,8 GHz) Tj
+T*
+(Armazenamento interno: 1024 GB internos \(1 TB, sem expansao\)) Tj
+T*
+(Memoria expansivel \(microSD\): Nao) Tj
+T*
+(GPS: SIM) Tj
+T*
+(Display: 6,9" com resolucao 3120 x 1440 pixels) Tj
+T*
+(Camera traseira principal: 200 MP, fotos ate 16330 x 12247 pixels) Tj
+T*
+(Video \(resolucao maxima\): 8K \(7680 x 4320 pixels\)) Tj
+T*
+(Obs: Smartphone topo de linha com foco multimidia.) Tj
+T*
+(Obs: Espessura aproximada de 8,2 mm.) Tj
+T*
+() Tj
+T*
+(=== Apple iPhone 17 Pro Max ===) Tj
+T*
+(Nome comercial: Apple iPhone 17 Pro Max) Tj
+T*
+(Marca: Apple) Tj
+T*
+(Modelo: iPhone 17 Pro Max) Tj
+T*
+(Sistema operacional: iOS 26) Tj
+T*
+(Preco de referencia \(Brasil\): R$ 10.160) Tj
+T*
+(Rede / conectividade principal: Dual Sim, 5G, Wi?Fi, Bluetooth, GPS) Tj
+T*
+(Processador \(CPU\): 6 core, ate 4,3 GHz) Tj
+T*
+(Armazenamento interno: 2048 GB internos \(2 TB, sem expansao\)) Tj
+T*
+(Memoria expansivel \(microSD\): Nao) Tj
+T*
+(GPS: SIM) Tj
+T*
+(Display: 6,9" com resolucao 2868 x 1320 pixels) Tj
+T*
+(Camera traseira principal: 48 MP, fotos ate 8000 x 6000 pixels) Tj
+T*
+ET
+
+endstream
+endobj
+7 0 obj
+<< /Length 2337 >>
+stream
+BT
+/F1 10 Tf
+14 TL
+40 800 Td
+(Video \(resolucao maxima\): 4K \(3840 x 2160 pixels\)) Tj
+T*
+(Obs: Smartphone iOS topo de linha, foco em desempenho e camera.) Tj
+T*
+(Obs: Espessura aproximada de 8,8 mm.) Tj
+T*
+() Tj
+T*
+(=== Samsung Galaxy A56 ===) Tj
+T*
+(Nome comercial: Samsung Galaxy A56) Tj
+T*
+(Marca: Samsung) Tj
+T*
+(Modelo: Galaxy A56) Tj
+T*
+(Sistema operacional: Android 15) Tj
+T*
+(Preco de referencia \(Brasil\): R$ 1.740) Tj
+T*
+(Rede / conectividade principal: Dual Sim, 5G, Wi?Fi, Bluetooth, GPS) Tj
+T*
+(Processador \(CPU\): 8 core, ate 2,3 GHz) Tj
+T*
+(Armazenamento interno: 256 GB internos \(sem expansao\)) Tj
+T*
+(Memoria expansivel \(microSD\): Nao) Tj
+T*
+(GPS: SIM) Tj
+T*
+(Display: 6,7" com resolucao 2340 x 1080 pixels) Tj
+T*
+(Camera traseira principal: 50 MP, fotos ate 8165 x 6124 pixels) Tj
+T*
+(Video \(resolucao maxima\): 4K \(3840 x 2160 pixels\)) Tj
+T*
+(Obs: Smartphone intermediario forte, bom para fotos.) Tj
+T*
+(Obs: Espessura aproximada de 7,4 mm \(corpo fino\).) Tj
+T*
+() Tj
+T*
+(=== Apple iPhone 16e ===) Tj
+T*
+(Nome comercial: Apple iPhone 16e) Tj
+T*
+(Marca: Apple) Tj
+T*
+(Modelo: iPhone 16e) Tj
+T*
+(Sistema operacional: iOS 18) Tj
+T*
+(Preco de referencia \(Brasil\): R$ 3.497) Tj
+T*
+(Rede / conectividade principal: Dual Sim, 5G, Wi?Fi, Bluetooth, GPS) Tj
+T*
+(Processador \(CPU\): 6 core, ate 2,8 GHz) Tj
+T*
+(Armazenamento interno: 512 GB internos \(sem expansao\)) Tj
+T*
+(Memoria expansivel \(microSD\): Nao) Tj
+T*
+(GPS: SIM) Tj
+T*
+(Display: 6,1" com resolucao 2532 x 1170 pixels) Tj
+T*
+(Camera traseira principal: 48 MP, fotos ate 8000 x 6000 pixels) Tj
+T*
+(Video \(resolucao maxima\): 4K \(3840 x 2160 pixels\)) Tj
+T*
+(Obs: Smartphone iOS avancado, corpo fino \(cerca de 7,8 mm\).) Tj
+T*
+() Tj
+T*
+(=== Samsung Galaxy S23 Plus ===) Tj
+T*
+(Nome comercial: Samsung Galaxy S23 Plus) Tj
+T*
+(Marca: Samsung) Tj
+T*
+(Modelo: Galaxy S23 Plus) Tj
+T*
+(Sistema operacional: Android 13) Tj
+T*
+(Preco de referencia \(Brasil\): R$ 4.049) Tj
+T*
+(Rede / conectividade principal: Dual Sim, 5G, Wi?Fi, Bluetooth, GPS) Tj
+T*
+(Processador \(CPU\): 8 core, ate 2,6 GHz) Tj
+T*
+(Armazenamento interno: 512 GB internos \(sem expansao\)) Tj
+T*
+(Memoria expansivel \(microSD\): Nao) Tj
+T*
+(GPS: SIM) Tj
+T*
+(Display: 6,6" com resolucao 2340 x 1080 pixels) Tj
+T*
+(Camera traseira principal: 50 MP, fotos ate 8165 x 6124 pixels) Tj
+T*
+ET
+
+endstream
+endobj
+8 0 obj
+<< /Length 1727 >>
+stream
+BT
+/F1 10 Tf
+14 TL
+40 800 Td
+(Video \(resolucao maxima\): 8K \(7680 x 4320 pixels\)) Tj
+T*
+(Obs: Aparelho avancado com foco em camera e desempenho.) Tj
+T*
+(Obs: Espessura aproximada de 7,6 mm.) Tj
+T*
+() Tj
+T*
+(=== Xiaomi 15T Pro ===) Tj
+T*
+(Nome comercial: Xiaomi 15T Pro) Tj
+T*
+(Marca: Xiaomi) Tj
+T*
+(Modelo: 15T Pro) Tj
+T*
+(Sistema operacional: Android 15) Tj
+T*
+(Preco de referencia \(Brasil\): R$ 5.059) Tj
+T*
+(Rede / conectividade principal: Dual Sim, 5G, Wi?Fi, Bluetooth, GPS) Tj
+T*
+(Processador \(CPU\): 8 core, ate 2,9 GHz) Tj
+T*
+(Armazenamento interno: 1024 GB internos \(1 TB, sem expansao\)) Tj
+T*
+(Memoria expansivel \(microSD\): Nao) Tj
+T*
+(GPS: SIM) Tj
+T*
+(Display: 6,83" com resolucao 2772 x 1280 pixels) Tj
+T*
+(Camera traseira principal: 50 MP, fotos ate 8165 x 6124 pixels) Tj
+T*
+(Video \(resolucao maxima\): 8K \(7680 x 4320 pixels\)) Tj
+T*
+(Obs: Smartphone Android topo de linha, fino \(cerca de 8 mm\).) Tj
+T*
+() Tj
+T*
+(=== BOAS PRATICAS PARA RAG COM GEMINI \(FILE SEARCH\) ===) Tj
+T*
+(1\) Use um documento bem estruturado, com cada aparelho em um bloco separado \(como neste PDF\).) Tj
+T*
+(2\) Prefira linhas curtas no formato chave:valor para facilitar a divisao em chunks.) Tj
+T*
+(3\) Inclua sempre o preco de referencia, mas deixe claro que pode variar com o tempo.) Tj
+T*
+(4\) Evite paragrafos enormes; use listas e secoes separadas para memoria, camera, tela, etc.) Tj
+T*
+(5\) Para muitos aparelhos, considere mais de um arquivo \(por categoria, marca ou faixa de preco\).) Tj
+T*
+(6\) Atualize o PDF periodicamente se os precos mudarem ou se novos modelos forem adicionados.) Tj
+T*
+(7\) No File Search da Gemini, use nomes de loja e categorias nos metadados para filtrar por tipo.) Tj
+T*
+() Tj
+T*
+ET
+
+endstream
+endobj
+9 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+xref
+0 10
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000129 00000 n 
+0000000255 00000 n 
+0000000381 00000 n 
+0000000507 00000 n 
+0000002951 00000 n 
+0000005340 00000 n 
+0000007119 00000 n 
+trailer
+<< /Size 10 /Root 1 0 R >>
+startxref
+7189
+%%EOF
