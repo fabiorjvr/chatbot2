@@ -1,20 +1,20 @@
-# Assistente de Vendas de Celulares para WhatsApp
+# Assistente de Vendas de Celulares para WhatsApp com IA Híbrida (Gemini + Llama)
 
 ## 📖 Descrição
 
-Este projeto consiste em um chatbot avançado para WhatsApp, projetado para atuar como um assistente de vendas especializado em smartphones. O agente de IA é capaz de entender e processar uma variedade de perguntas dos usuários, desde consultas técnicas sobre especificações de produtos até comparações entre modelos e perguntas relacionadas a vendas e finanças.
+Este projeto consiste em um chatbot avançado para WhatsApp, projetado para atuar como um assistente de vendas especializado em smartphones. O agente de IA foi reestruturado para utilizar o **Gemini File Search** como sua principal base de conhecimento técnico, consultando um arquivo (`celularrag.pdf`) para obter especificações de produtos.
 
-O sistema utiliza uma arquitetura robusta que combina bancos de dados relacionais e vetoriais, um poderoso modelo de linguagem e uma integração direta com o WhatsApp para oferecer respostas rápidas, precisas e contextualmente relevantes.
+Para conversas gerais ou quando a informação não é encontrada, o sistema utiliza o modelo `llama-3.1-70b-versatile` da Groq como fallback, garantindo respostas rápidas, precisas e contextualmente relevantes em qualquer cenário.
 
 ## 🛠️ Arquitetura e Tecnologias
 
-O projeto é construído sobre uma pilha de tecnologias modernas para garantir eficiência, escalabilidade e inteligência.
+O projeto foi modernizado para uma arquitetura mais ágil e focada em APIs de IA de ponta.
 
 - **Linguagem de Backend:** Python
 - **Servidor Web:** Flask
-- **Banco de Dados Relacional:** PostgreSQL
-- **Banco de Dados Vetorial:** ChromaDB
-- **Modelo de Linguagem (LLM):** Groq com `llama-3.1-70b-versatile`
+- **Base de Conhecimento (RAG):** **Google Gemini File Search API**
+- **Modelo de Linguagem Principal (RAG):** **Gemini 1.5 Flash**
+- **Modelo de Linguagem Fallback:** Groq com `llama-3.1-70b-versatile`
 - **Conexão WhatsApp:** WPPConnect-JS
 - **Gerenciamento de Ambiente:** Node.js (para o conector do WhatsApp)
 
@@ -22,25 +22,28 @@ O projeto é construído sobre uma pilha de tecnologias modernas para garantir e
 
 Abaixo estão os arquivos e diretórios mais importantes para o funcionamento do sistema:
 
-- `ai_agent.py`: O cérebro do projeto. Contém a classe `AIAgent`, responsável por processar as mensagens, orquestrar a chamada de ferramentas e rotear as perguntas para o fluxo de processamento correto (técnico, vendas, RAG, etc.).
-- `tools.py`: Define o conjunto de ferramentas que o agente pode utilizar para interagir com o banco de dados PostgreSQL. Cada ferramenta corresponde a uma consulta SQL específica (ex: `get_top_products`, `get_product_sales`).
-- `app.py`: Um servidor web minimalista criado com Flask. Ele expõe um endpoint `/webhook` que recebe as mensagens do WhatsApp (encaminhadas pelo `wppconnect_qrcode.js`), as passa para o `AIAgent` e retorna a resposta.
-- `wppconnect_qrcode.js`: Script Node.js que utiliza a biblioteca `@wppconnect-team/wppconnect` para conectar-se ao WhatsApp. Ele gera o QR code para autenticação, escuta as mensagens recebidas e as envia para o webhook do `app.py`.
-- `rag/vector_store.py`: Gerencia o banco de dados vetorial ChromaDB. É responsável por criar, carregar e realizar buscas de similaridade nos documentos de texto, sendo a base para o fluxo de RAG (Retrieval-Augmented Generation).
-- `data/chroma_db/`: Diretório onde o ChromaDB armazena seus dados de forma persistente.
-- `setup_database.py`: Script de inicialização para o PostgreSQL. Ele cria as tabelas necessárias (`smartphones`, `sales`, etc.) e as popula com os dados iniciais.
-- `setup_chromadb.py`: Script de inicialização para o ChromaDB. Ele lê os arquivos de texto (como manuais de vendas) e os insere no banco de dados vetorial.
-- `.env`: Arquivo de configuração para armazenar variáveis de ambiente sensíveis, como a chave da API da Groq e a URL de conexão com o banco de dados PostgreSQL.
-- `README.md`: Este arquivo de documentação.
+- `ai_agent.py`: O cérebro do projeto. Contém a classe `AIAgent`, responsável por processar as mensagens, orquestrar a chamada ao Gemini File Search e decidir quando usar o modelo de fallback da Groq.
+- `rag/gemini_fs.py`: Gerencia toda a interação com a API do Gemini File Search. É responsável por criar o *File Store*, fazer o upload do arquivo `celularrag.pdf` e executar as buscas (queries) para responder às perguntas dos usuários.
+- `app.py`: Servidor web minimalista com Flask. Expõe o endpoint `/webhook` que recebe as mensagens do WhatsApp (encaminhadas pelo `wppconnect_qrcode.js`), as passa para o `AIAgent` e retorna a resposta.
+- `wppconnect_qrcode.js`: Script Node.js que utiliza a biblioteca `@wppconnect-team/wppconnect` para conectar-se ao WhatsApp. Ele gera o QR code, escuta as mensagens e as envia para o webhook do `app.py`.
+- `celularrag.pdf`: O documento central da base de conhecimento. Contém todas as fichas técnicas e informações dos produtos que o assistente pode vender. Este arquivo é enviado para o Gemini File Search.
+- `.env`: Arquivo de configuração para armazenar variáveis de ambiente, como as chaves de API do Gemini e da Groq.
+- `README2.md`: Este arquivo de documentação.
 
-## 🗄️ Bancos de Dados Utilizados
+## 🗄️ Base de Conhecimento (RAG com Gemini File Search)
 
-- **PostgreSQL**: Armazena todos os dados estruturados do projeto. Isso inclui as especificações técnicas detalhadas de cada smartphone (processador, tela, bateria, etc.), informações de estoque, preços e todos os registros de vendas. O `AIAgent` acessa esses dados através das funções definidas em `tools.py`.
-- **ChromaDB**: Funciona como a base de conhecimento para perguntas abertas, subjetivas ou que não podem ser respondidas apenas com dados estruturados. Ele armazena informações não estruturadas (documentos de texto) em formato de vetores, permitindo que o agente realize buscas por similaridade semântica para encontrar os contextos mais relevantes e gerar respostas ricas (fluxo RAG).
+O sistema abandonou os bancos de dados tradicionais (PostgreSQL e ChromaDB) em favor de uma arquitetura mais moderna e simplificada com o **Google Gemini File Search**.
 
-## 🧠 Modelo de Linguagem
+- **Fonte de Dados Única:** Um único arquivo, `celularrag.pdf`, contém todas as informações técnicas dos produtos. Isso simplifica drasticamente a gestão e atualização dos dados.
+- **Indexação Automática:** O script `rag/gemini_fs.py` faz o upload deste PDF para um *File Store* no Gemini, que automaticamente processa, indexa e otimiza o conteúdo para buscas semânticas.
+- **Busca Inteligente (RAG):** Quando um usuário faz uma pergunta técnica (ex: "Qual a bateria do Galaxy S24?"), o `AIAgent` aciona o `GeminiFileSearchManager` para fazer uma query diretamente no conteúdo do PDF. O Gemini encontra os trechos mais relevantes e os utiliza para gerar uma resposta precisa, baseada exclusivamente nos dados do documento.
 
-Utilizamos o modelo `llama-3.1-70b-versatile` disponibilizado através da plataforma da **Groq**. A escolha se deu pela sua alta capacidade de processamento de linguagem natural, excelente habilidade para seguir instruções e utilizar ferramentas (tool-use), e, principalmente, pela sua incrível velocidade de inferência, o que é crucial para uma experiência de conversação fluida em tempo real no WhatsApp.
+## 🧠 Modelo de Linguagem Híbrido
+
+Utilizamos uma abordagem híbrida para garantir a melhor performance e versatilidade:
+
+- **Gemini 1.5 Flash:** É o modelo principal, invocado através do File Search para todas as consultas técnicas que exigem busca de dados no `celularrag.pdf`. Sua integração nativa com o RAG garante respostas factuais e precisas.
+- **Llama 3.1 70B (Groq):** Atua como um modelo de fallback para conversação geral. Se a pergunta do usuário for um cumprimento, uma dúvida não relacionada a produtos ou se o File Search não retornar uma resposta, o `AIAgent` utiliza o Llama 3.1 via Groq para gerar uma resposta rápida e fluida, mantendo a qualidade da interação.
 
 ## 🚀 Como Executar o Projeto
 
@@ -65,22 +68,15 @@ Siga os passos abaixo para configurar e executar o ambiente de desenvolvimento.
       ```
 
 2.  **Configurar Variáveis de Ambiente:**
-    - Crie um arquivo chamado `.env` na raiz do projeto.
+    - Renomeie `.env.example` para `.env` ou crie um novo arquivo `.env`.
     - Adicione as seguintes variáveis, substituindo pelos seus valores:
       ```
       GROQ_API_KEY="SUA_CHAVE_API_GROQ"
-      DATABASE_URL="postgresql://usuario:senha@host:porta/nome_do_banco"
+      GEMINI_API_KEY="SUA_CHAVE_API_GEMINI"
       ```
 
-3.  **Inicializar os Bancos de Dados:**
-    - Execute o script para configurar e popular o PostgreSQL:
-      ```bash
-      python setup_database.py
-      ```
-    - Execute o script para configurar e popular o ChromaDB:
-      ```bash
-      python setup_chromadb.py
-      ```
+3.  **Preparar a Base de Conhecimento:**
+    - Garanta que o arquivo `celularrag.pdf` esteja presente na raiz do projeto. Este arquivo é a única fonte de dados para as especificações dos produtos.
 
 4.  **Iniciar os Serviços:**
     - Em um terminal, inicie o servidor Flask que hospeda o agente:
@@ -94,24 +90,11 @@ Siga os passos abaixo para configurar e executar o ambiente de desenvolvimento.
 
 5.  **Conectar ao WhatsApp:**
     - O terminal executando `node wppconnect_qrcode.js` exibirá um QR code.
-    - Abra o WhatsApp em seu celular, vá em **Configurações > Aparelhos conectados > Conectar um aparelho** e escaneie o QR code.
+    - Abra o WhatsApp em seu celular, vá em **Configurações \u003e Aparelhos conectados \u003e Conectar um aparelho** e escaneie o QR code.
     - Aguarde a mensagem de "CONECTADO COM SUCESSO!" no terminal.
 
-A partir deste momento, o chatbot estará ativo e pronto para receber mensagens no número de WhatsApp conectado.
+A partir deste momento, o chatbot estará ativo. Na primeira execução, o `AIAgent` irá criar o *File Store* no Gemini e fazer o upload do `celularrag.pdf`, o que pode levar alguns instantes.
 
 ---
 
 ### Desenvolvido por Fábio Rosestolato Ferreira
- 
----
- 
-## Atualizações e Melhorias – 14/11/2025
- 
-- Correção crítica no `wppconnect_qrcode.js` (removidos escapes inválidos `=\u003e` e `\u0026\u0026`).
-- Logs aprimorados para grupos, menções e fluxo de mensagens no conector WhatsApp.
-- Ajuste no `/health` do Flask para status consistente e métricas funcionais.
-- Integração e validação ponta a ponta: mensagens e respostas visíveis nos terminais.
-- Guardrails técnicos no `ai_agent.py`: respostas realistas, moderadas e baseadas em dados.
-- Preparação para RAG técnico com documentos base (NFC, Dual SIM/eSIM, câmeras) nos principais modelos.
-- Suporte a execução contínua com PM2 (`wpp` e `flask`) e reinício automático.
-- Caminho de envio de imagens ajustado no conector para compatibilidade com arquivos locais.
